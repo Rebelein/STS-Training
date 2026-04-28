@@ -1,0 +1,6 @@
+{
+  "name": "STS Wachendorf e.V.",
+  "description": "Ein Management-Tool für den STS Wachendorf e.V. zur Verwaltung von Mitgliedern, Gruppen, Trainings und Anwesenheiten.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
