@@ -23,7 +23,7 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
   
   // New event state
   const [showEventForm, setShowEventForm] = useState(false);
-  const [newEvent, setNewEvent] = useState({ title: '', description: '', topic: '', date: '', start_time: '', end_time: '', is_event: false });
+  const [newEvent, setNewEvent] = useState<{ id?: string, title: string, description: string, topic: string, date: string, start_time: string, end_time: string, is_event: boolean }>({ title: '', description: '', topic: '', date: '', start_time: '', end_time: '', is_event: false });
 
   // View mode
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
@@ -256,18 +256,50 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
     fetchGroupData();
   }
 
-  const handleCreateEvent = async (e: React.FormEvent) => {
+  const handleSaveEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id) return;
     
-    await supabase.from('events').insert({
-      group_id: id,
-      ...newEvent
-    });
+    if (newEvent.id) {
+       await supabase.from('events').update({
+         title: newEvent.title,
+         description: newEvent.description,
+         topic: newEvent.topic,
+         date: newEvent.date,
+         start_time: newEvent.start_time,
+         end_time: newEvent.end_time,
+         is_event: newEvent.is_event
+       }).eq('id', newEvent.id);
+    } else {
+       const { id: _, ...insertData } = newEvent;
+       await supabase.from('events').insert({
+         group_id: id,
+         ...insertData
+       });
+    }
     
     setShowEventForm(false);
     setNewEvent({ title: '', description: '', topic: '', date: '', start_time: '', end_time: '', is_event: false });
     fetchGroupData();
+  };
+
+  const handleEditClick = async (eventObj: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const realEvent = await resolveVirtualEvent(eventObj);
+    if (!realEvent) return;
+    
+    setNewEvent({
+       id: realEvent.id,
+       title: realEvent.title || '',
+       description: realEvent.description || '',
+       topic: realEvent.topic || '',
+       date: realEvent.date || '',
+       start_time: realEvent.start_time || '',
+       end_time: realEvent.end_time || '',
+       is_event: realEvent.is_event || false
+    });
+    setShowEventForm(true);
+    window.scrollTo({ top: 300, behavior: 'smooth' });
   };
 
   const prevMonth = () => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
@@ -423,7 +455,10 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
                 </Button>
               </div>
               {isTrainer && !showEventForm && (
-                <Button size="sm" className="h-9 px-3 flex-1 sm:flex-none" onClick={() => setShowEventForm(true)}>
+                <Button size="sm" className="h-9 px-3 flex-1 sm:flex-none" onClick={() => {
+                  setNewEvent({ title: '', description: '', topic: '', date: '', start_time: '', end_time: '', is_event: false });
+                  setShowEventForm(true);
+                }}>
                   <Plus className="w-4 h-4 mr-1.5" /> Neuer Termin
                 </Button>
               )}
@@ -433,13 +468,16 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
           {showEventForm && (
             <Card className="border-primary/50 bg-primary/5 shadow-lg shadow-primary/5">
               <CardHeader className="pb-3 border-b border-primary/10 flex flex-row items-center justify-between">
-                <CardTitle className="text-lg">Neuer Termin</CardTitle>
-                <Button variant="ghost" size="icon" onClick={() => setShowEventForm(false)} className="w-8 h-8 rounded-full hover:bg-black/10 dark:hover:bg-white/10">
+                <CardTitle className="text-lg">{newEvent.id ? "Termin bearbeiten" : "Neuer Termin"}</CardTitle>
+                <Button variant="ghost" size="icon" onClick={() => {
+                  setShowEventForm(false);
+                  setNewEvent({ title: '', description: '', topic: '', date: '', start_time: '', end_time: '', is_event: false });
+                }} className="w-8 h-8 rounded-full hover:bg-black/10 dark:hover:bg-white/10">
                   <X className="w-4 h-4" />
                 </Button>
               </CardHeader>
               <CardContent className="pt-4">
-                <form onSubmit={handleCreateEvent} className="space-y-4">
+                <form onSubmit={handleSaveEvent} className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="text-xs font-medium">Titel (z.B. Reguläres Training)</label>
@@ -517,7 +555,7 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
                         )}
                         onClick={() => {
                           if (isTrainer) {
-                            setNewEvent(prev => ({...prev, date: format(day, 'yyyy-MM-dd')}));
+                            setNewEvent(prev => ({ title: '', description: '', topic: '', date: format(day, 'yyyy-MM-dd'), start_time: '', end_time: '', is_event: false }));
                             setShowEventForm(true);
                             // Scroll to top where the form is smoothly
                             window.scrollTo({ top: 300, behavior: 'smooth' });
@@ -546,6 +584,15 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
                                   : "bg-primary/20 text-primary-foreground border border-primary/20"
                               )}
                               title={event.title}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setViewMode('list');
+                                setExpandedEventId(event.id);
+                                setTimeout(() => {
+                                  const el = document.getElementById(`event-${event.id}`);
+                                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                }, 100);
+                              }}
                             >
                               {event.start_time.slice(0,5)} {event.title}
                             </div>
@@ -569,6 +616,7 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
                 return (
                   <Card 
                     key={event.id} 
+                    id={`event-${event.id}`}
                     className={cn(
                       "border-white/10 bg-card/60 backdrop-blur-xl transition-all shadow-sm cursor-pointer hover:bg-card/80", 
                       event.is_cancelled && "opacity-60",
@@ -657,9 +705,12 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
                           </div>
                           
                           {isTrainer && (
-                            <div className="flex flex-col gap-1 sm:items-end w-full sm:w-auto">
+                            <div className="flex flex-col sm:flex-row gap-2 sm:items-end w-full sm:w-auto mt-2 sm:mt-0">
                               <p className="text-xs font-medium text-muted-foreground hidden sm:block">&nbsp;</p>
-                              <Button variant="ghost" size="sm" onClick={() => handleCancelEvent(event)} className="h-8 text-xs text-red-500 hover:bg-red-500/10 w-full sm:w-auto mt-2 sm:mt-0">
+                              <Button variant="secondary" size="sm" onClick={(e) => handleEditClick(event, e)} className="h-8 text-xs w-full sm:w-auto">
+                                Bearbeiten
+                              </Button>
+                              <Button variant="ghost" size="sm" onClick={() => handleCancelEvent(event)} className="h-8 text-xs text-red-500 hover:bg-red-500/10 w-full sm:w-auto">
                                 Training Absagen
                               </Button>
                             </div>
