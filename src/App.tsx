@@ -6,6 +6,7 @@ import { LandingPage } from "./pages/LandingPage";
 import { AuthPage } from "./pages/AuthPage";
 import { Dashboard } from "./pages/Dashboard";
 import { UpdateNotification } from "./components/UpdateNotification";
+import { PWAInstallBanner } from "./components/PWAInstallBanner";
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { session, isLoading } = useAuth();
@@ -40,6 +41,7 @@ export default function App() {
     <ThemeProvider defaultTheme="dark" storageKey="sts-wachendorf-theme">
       <AuthProvider>
         <UpdateNotification />
+        <PWAInstallBanner />
         <Router>
           <Routes>
             <Route path="/" element={

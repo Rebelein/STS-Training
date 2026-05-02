@@ -293,12 +293,7 @@ const DashboardHome = ({ activeMemberships, waitingMemberships, profile, user, r
 
       // Filter out inactive events
       // For dashboard, we want to only show active ones for standard members
-      // If user is trainer in a group, maybe they see inactive? The request said "hier müssen alle termine angezeigt werden die für den nutzer möglich sind" -> active events.
-      const filteredEvents = combinedEvents.filter(e => {
-         const m = activeMemberships.find((am: any) => am.group_id === e.group_id);
-         const isTrainer = m?.role === 'trainer' || isGlobalAdmin;
-         return isTrainer || e.is_active !== false;
-      });
+      const filteredEvents = combinedEvents.filter(e => e.is_active !== false);
 
       // Sort
       filteredEvents.sort((a, b) => {
