@@ -30,8 +30,8 @@ export const UpdateNotification = () => {
     // Initial check
     setTimeout(checkForUpdate, 5000);
 
-    // Check every 5 minutes
-    interval = setInterval(checkForUpdate, 5 * 60 * 1000);
+    // Check every 1 minute
+    interval = setInterval(checkForUpdate, 1 * 60 * 1000);
 
     // Also check when window regains focus
     const handleFocus = () => checkForUpdate();

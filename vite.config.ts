@@ -19,6 +19,16 @@ export default defineConfig(({mode}) => {
             fileName: 'version.json',
             source: JSON.stringify({ version: currentVersion })
           });
+        },
+        configureServer(server) {
+          server.middlewares.use((req, res, next) => {
+            if (req.url?.startsWith('/version.json')) {
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ version: currentVersion }));
+            } else {
+              next();
+            }
+          });
         }
       }
     ],
