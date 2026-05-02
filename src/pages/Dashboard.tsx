@@ -16,6 +16,7 @@ import { de } from "date-fns/locale";
 export const Dashboard = () => {
   const { user, profile, isGlobalAdmin } = useAuth();
   const [memberships, setMemberships] = useState<any[]>([]);
+  const [availableGroups, setAvailableGroups] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const location = useLocation();
@@ -84,6 +85,30 @@ export const Dashboard = () => {
     }
   };
 
+  useEffect(() => {
+    if (!loading) {
+       const fetchAvailable = async () => {
+         const skipIds = memberships.map(m => m.group_id);
+         const { data } = await supabase.from('groups').select('*');
+         if (data) {
+           setAvailableGroups(data.filter(g => !skipIds.includes(g.id)));
+         }
+       }
+       fetchAvailable();
+    }
+  }, [memberships, loading]);
+
+  const handleJoinGroup = async (groupId: string) => {
+    if(!user) return;
+    await supabase.from('group_members').insert({
+      group_id: groupId,
+      user_id: user.id,
+      role: isGlobalAdmin ? 'trainer' : 'member',
+      status: isGlobalAdmin ? 'active' : 'waiting'
+    });
+    fetchMemberships();
+  };
+
   const activeMemberships = memberships.filter(m => m.status === 'active');
   const waitingMemberships = memberships.filter(m => m.status === 'waiting');
 
@@ -114,11 +139,11 @@ export const Dashboard = () => {
 
         {/* Sidebar */}
         <aside className={cn(
-          "w-64 border-r border-white/10 bg-black/90 md:bg-black/40 backdrop-blur-xl flex flex-col z-50",
+          "w-64 border-r border-black/10 dark:border-white/10 bg-white/90 dark:bg-black/40 backdrop-blur-xl flex flex-col z-50",
           "fixed inset-y-0 left-0 transition-transform duration-300 md:relative md:translate-x-0",
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
         )}>
-          <div className="p-4 flex justify-between items-center md:hidden border-b border-white/10">
+          <div className="p-4 flex justify-between items-center md:hidden border-b border-black/10 dark:border-white/10">
             <span className="font-display font-semibold">Menü</span>
             <Button variant="ghost" size="icon" onClick={() => setIsSidebarOpen(false)}>
               <X className="w-5 h-5" />
@@ -167,7 +192,7 @@ export const Dashboard = () => {
             </div>
 
             {waitingMemberships.length > 0 && (
-              <div>
+              <div className="mb-4">
                 <h3 className="px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
                   Wartend auf Bestätigung
                 </h3>
@@ -181,15 +206,43 @@ export const Dashboard = () => {
                 </div>
               </div>
             )}
+
+            {availableGroups.length > 0 && (
+              <div>
+                <h3 className="px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                  Gruppen beitreten
+                </h3>
+                <div className="space-y-1">
+                  {availableGroups.map(g => (
+                    <div key={g.id} className="px-4 py-2 flex items-center justify-between group">
+                      <div className="min-w-0 pr-2">
+                        <p className="text-sm font-medium truncate text-foreground/90">{g.name}</p>
+                      </div>
+                      <Button 
+                        size="sm" 
+                        variant="secondary" 
+                        className="h-6 text-[10px] px-2 opacity-100 transition-opacity shrink-0"
+                        onClick={() => handleJoinGroup(g.id)}
+                      >
+                        {isGlobalAdmin ? 'Beitreten' : 'Anfrage'}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </aside>
 
         {/* Main Content */}
         <main className="flex-1 overflow-y-auto p-4 md:p-8 relative">
-          <div className="md:hidden flex items-center mb-6">
-            <Button variant="outline" size="sm" onClick={() => setIsSidebarOpen(true)} className="flex items-center gap-2 border-white/10 bg-white/5">
-              <Menu className="w-4 h-4" /> Navigation
-            </Button>
+          <div className="flex items-center justify-between xl:justify-end mb-6">
+            <div className="md:hidden">
+              <Button variant="outline" size="sm" onClick={() => setIsSidebarOpen(true)} className="flex items-center gap-2 border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5">
+                <Menu className="w-4 h-4" /> Navigation
+              </Button>
+            </div>
+            <div id="header-actions" className="flex shrink-0"></div>
           </div>
           <Routes>
               <Route path="/" element={
@@ -212,14 +265,12 @@ export const Dashboard = () => {
 };
 
 const DashboardHome = ({ activeMemberships, waitingMemberships, profile, user, refreshMemberships }: any) => {
-  const [availableGroups, setAvailableGroups] = useState<any[]>([]);
   const { isGlobalAdmin } = useAuth();
   const [upcomingEvents, setUpcomingEvents] = useState<any[]>([]);
   const [myRsvps, setMyRsvps] = useState<any[]>([]);
   const [loadingEvents, setLoadingEvents] = useState(false);
 
   useEffect(() => {
-    fetchAvailableGroups();
     if (activeMemberships.length > 0) {
       fetchDashboardData();
     }
@@ -327,34 +378,13 @@ const DashboardHome = ({ activeMemberships, waitingMemberships, profile, user, r
     }
   };
 
-  const fetchAvailableGroups = async () => {
-    const skipIds = [...activeMemberships, ...waitingMemberships].map(m => m.group_id);
-    const query = supabase.from('groups').select('*');
-    if (skipIds.length > 0) {
-      query.not('id', 'in', `(${skipIds.join(',')})`);
-    }
-    const { data } = await query;
-    if (data) setAvailableGroups(data);
-  }
-
-  const handleJoinGroup = async (groupId: string) => {
-    if(!user) return;
-    await supabase.from('group_members').insert({
-      group_id: groupId,
-      user_id: user.id,
-      role: isGlobalAdmin ? 'trainer' : 'member',
-      status: isGlobalAdmin ? 'active' : 'waiting'
-    });
-    refreshMemberships();
-  };
-
   const renderEventCard = (event: any, isConfirmed: boolean) => {
     const rsvp = myRsvps.find(r => r.event_id === event.id);
 
     return (
-      <Link key={event.id} to={`/app/group/${event.group_id}`}>
+      <Link key={event.id} to={`/app/group/${event.group_id}?eventId=${event.id}&date=${event.date}`}>
         <div className={cn(
-          "p-4 rounded-xl border border-white/5 bg-black/20 hover:bg-black/30 dark:bg-white/[0.02] dark:hover:bg-white/[0.04] transition-colors relative overflow-hidden group",
+          "p-4 rounded-xl border border-black/5 dark:border-white/5 bg-black/5 hover:bg-black/10 dark:bg-white/[0.02] dark:hover:bg-white/[0.04] transition-colors relative overflow-hidden group",
           event.is_cancelled && "opacity-60 grayscale"
         )}>
            {event.is_event ? (
@@ -364,7 +394,7 @@ const DashboardHome = ({ activeMemberships, waitingMemberships, profile, user, r
            )}
            <div className="flex justify-between items-start mb-2">
              <div className="flex items-center gap-2">
-               <div className="bg-white/5 p-2 rounded-lg border border-white/10 text-center min-w-[3rem]">
+               <div className="bg-black/5 dark:bg-white/5 p-2 rounded-lg border border-black/10 dark:border-white/10 text-center min-w-[3rem]">
                  <div className="text-[10px] uppercase font-bold text-muted-foreground leading-none mb-1">
                    {format(new Date(event.date), 'MMM', { locale: de })}
                  </div>
@@ -440,32 +470,15 @@ const DashboardHome = ({ activeMemberships, waitingMemberships, profile, user, r
       <p className="text-muted-foreground text-lg mb-10">Willkommen im STS Wachendorf e.V. Vereinsportal.</p>
 
       {activeMemberships.length === 0 && waitingMemberships.length === 0 && (
-        <div className="bg-card border border-white/10 rounded-xl p-8 text-center max-w-md mx-auto mt-12 shadow-xl mb-12">
+        <div className="bg-card border border-black/10 dark:border-white/10 rounded-xl p-8 text-center max-w-md mx-auto mt-12 shadow-xl mb-12">
           <div className="w-16 h-16 bg-primary/20 text-primary rounded-full flex items-center justify-center mx-auto mb-4">
             <Users className="w-8 h-8" />
           </div>
           <h2 className="text-xl font-bold mb-2">Du bist noch in keiner Gruppe</h2>
-          <p className="text-muted-foreground mb-6">Bitte frage bei einer Gruppe an, um Trainings zu sehen und teilzunehmen.</p>
+          <p className="text-muted-foreground mb-6">Bitte frage bei einer Gruppe im Seitenmenü an (unter "Gruppen beitreten"), um Trainings zu sehen und teilzunehmen.</p>
         </div>
       )}
       
-      {availableGroups.length > 0 && (
-        <div className="mb-12">
-           <h2 className="text-xl font-bold mb-4">Gruppen beitreten</h2>
-           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-             {availableGroups.map(g => (
-               <div key={g.id} className="border border-white/10 bg-card/40 backdrop-blur-sm p-4 rounded-xl flex items-center justify-between">
-                 <div>
-                   <h3 className="font-semibold">{g.name}</h3>
-                   <p className="text-xs text-muted-foreground">{g.description}</p>
-                 </div>
-                 <Button size="sm" onClick={() => handleJoinGroup(g.id)}>{isGlobalAdmin ? 'Beitreten' : 'Anfragen'}</Button>
-               </div>
-             ))}
-           </div>
-        </div>
-      )}
-
       {activeMemberships.length > 0 && !loadingEvents && (
         <div className="space-y-12">
            {/* Section 1: Confirmed Events */}
@@ -498,9 +511,9 @@ offenen Termine.</p>
               ) : (
                  <div className="space-y-8">
                    {Object.values(openEventsByGroup).map(({ group, events }) => (
-                     <div key={group?.id} className="bg-card/40 border border-white/10 p-5 rounded-2xl">
-                       <div className="flex items-center gap-3 mb-4 border-b border-white/10 pb-3">
-                         <div className="w-10 h-10 rounded-lg bg-black/20 flex items-center justify-center border border-white/5">
+                     <div key={group?.id} className="bg-card/40 border border-black/10 dark:border-white/10 p-5 rounded-2xl">
+                       <div className="flex items-center gap-3 mb-4 border-b border-black/10 dark:border-white/10 pb-3">
+                         <div className="w-10 h-10 rounded-lg bg-black/5 dark:bg-black/20 flex items-center justify-center border border-black/5 dark:border-white/5">
                            <Users className="w-5 h-5 text-muted-foreground" />
                          </div>
                          <div>

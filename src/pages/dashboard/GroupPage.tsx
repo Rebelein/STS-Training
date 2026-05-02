@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useLocation } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../components/auth-provider";
 import { motion } from "motion/react";
@@ -11,7 +11,15 @@ import { de } from "date-fns/locale";
 import { Users, UserCheck, Clock, CalendarIcon, FileText, Plus, X, ChevronLeft, ChevronRight, List as ListIcon, Settings, RotateCcw, ChevronDown } from "lucide-react";
 import { cn } from "../../lib/utils";
 
+import { createPortal } from "react-dom";
+
 export const GroupPage = ({ userRole }: { userRole: any[] }) => {
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const initialEventId = searchParams.get('eventId');
+  const initialDateStr = searchParams.get('date');
+  const initialDate = initialDateStr ? new Date(initialDateStr) : new Date();
+
   const { id } = useParams<{ id: string }>();
   const { user, isGlobalAdmin } = useAuth();
   const [group, setGroup] = useState<any>(null);
@@ -24,17 +32,18 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
   // New event state
   const [showEventForm, setShowEventForm] = useState(false);
   const [eventToDelete, setEventToDelete] = useState<any>(null);
+  const [memberTab, setMemberTab] = useState<'trainer' | 'member'>('member');
   const [newEvent, setNewEvent] = useState<{ id?: string, title: string, description: string, topic: string, date: string, start_time: string, end_time: string, is_event: boolean }>({ title: '', description: '', topic: '', date: '', start_time: '', end_time: '', is_event: false });
 
   // View mode
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [currentMonth, setCurrentMonth] = useState(initialDate);
   
   // Settings
   const [settingsMonth, setSettingsMonth] = useState(new Date());
 
   // Expanded event for RSVP
-  const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
+  const [expandedEventId, setExpandedEventId] = useState<string | null>(initialEventId);
 
   // Settings Modal
   const [showSettings, setShowSettings] = useState(false);
@@ -42,6 +51,12 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
 
   const currentRole = userRole.find(r => r.group_id === id)?.role || 'member';
   const isTrainer = currentRole === 'trainer' || isGlobalAdmin;
+
+  const [headerActionsContainer, setHeaderActionsContainer] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    setHeaderActionsContainer(document.getElementById('header-actions'));
+  }, []);
 
   useEffect(() => {
     if (id) {
@@ -188,7 +203,7 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
       });
     }
     
-    combined = combined.filter(e => isTrainer || e.is_active !== false);
+    combined = combined.filter(e => e.is_active !== false);
     return combined;
   };
   
@@ -494,17 +509,18 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
             )}
           </div>
         </div>
-        {isTrainer && (
-          <Button variant="secondary" onClick={() => setShowSettings(!showSettings)}>
+        {isTrainer && headerActionsContainer && createPortal(
+          <Button variant="secondary" onClick={() => setShowSettings(!showSettings)} className="w-full sm:w-auto mt-4 md:mt-0 flex shrink-0">
             <Settings className="w-4 h-4 mr-2" />
             Einstellungen
-          </Button>
+          </Button>,
+          headerActionsContainer
         )}
       </div>
 
       {showSettings && (
-        <Card className="border-white/10 bg-black/20 shadow-xl mb-6">
-          <CardHeader className="pb-3 border-b border-white/5 flex flex-row items-center justify-between">
+        <Card className="border-black/10 dark:border-white/10 bg-black/5 dark:bg-black/20 shadow-xl mb-6">
+          <CardHeader className="pb-3 border-b border-black/5 dark:border-white/5 flex flex-row items-center justify-between">
             <CardTitle className="text-lg">Gruppen-Einstellungen & Trainings-Vorlagen</CardTitle>
             <Button variant="ghost" size="icon" onClick={() => setShowSettings(false)} className="w-8 h-8 rounded-full hover:bg-black/10 dark:hover:bg-white/10">
               <X className="w-4 h-4" />
@@ -517,7 +533,7 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
             
             <div className="space-y-3">
               {templates.map((tpl, idx) => (
-                <div key={idx} className="flex flex-wrap items-center gap-2 p-3 bg-white/5 rounded-lg border border-white/5 relative">
+                <div key={idx} className="flex flex-wrap items-center gap-2 p-3 bg-black/5 dark:bg-white/5 rounded-lg border border-black/5 dark:border-white/5 relative">
                   <select 
                     value={tpl.dayOfWeek}
                     onChange={(e) => {
@@ -742,20 +758,21 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
 
           {viewMode === 'calendar' ? (
             <div className="space-y-4">
-              <Card className="border-white/10 bg-card/60 backdrop-blur-xl overflow-hidden shadow-xl">
-                <div className="grid grid-cols-7 border-b border-white/5 bg-black/5 dark:bg-white/5">
-                  {['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map(day => (
-                    <div key={day} className="py-2.5 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                      {day}
-                    </div>
-                  ))}
-                </div>
-                <div className="grid grid-cols-7 auto-rows-[minmax(90px,auto)]">
-                  {Array.from({ length: (startOfMonth(currentMonth).getDay() + 6) % 7 }).map((_, i) => (
-                    <div key={`empty-${i}`} className="border-r border-b border-white/5 bg-black/5 dark:bg-white/5 p-1 sm:p-2" />
-                  ))}
-                  
-                  {daysInMonth.map((day, i) => {
+              <div className="-mx-4 sm:mx-0 overflow-x-auto pb-4 custom-scrollbar">
+                <Card className="border-white/10 bg-card/60 backdrop-blur-xl overflow-hidden shadow-xl min-w-[700px] sm:min-w-0 border-x-0 rounded-none sm:rounded-xl sm:border-x">
+                  <div className="grid grid-cols-7 border-b border-white/5 bg-black/5 dark:bg-white/5">
+                    {['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map(day => (
+                      <div key={day} className="py-2.5 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        {day}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-7 auto-rows-[minmax(90px,auto)]">
+                    {Array.from({ length: (startOfMonth(currentMonth).getDay() + 6) % 7 }).map((_, i) => (
+                      <div key={`empty-${i}`} className="border-r border-b border-white/5 bg-black/5 dark:bg-white/5 p-1 sm:p-2" />
+                    ))}
+                    
+                    {daysInMonth.map((day, i) => {
                     const dayEvents = combinedEvents.filter(e => e.date === format(day, 'yyyy-MM-dd'));
                     const isTodayDate = isToday(day);
                     
@@ -786,37 +803,51 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
                         </div>
                         
                         <div className="space-y-1">
-                          {dayEvents.map(event => (
-                            <div 
-                              key={event.id}
-                              className={cn(
-                                "text-[10px] sm:text-xs p-1 rounded font-medium truncate cursor-pointer transition-transform hover:scale-[1.02]",
-                                event.is_cancelled ? "bg-red-500/10 text-red-500 border border-red-500/20 line-through opacity-70" :
-                                event.is_active === false ? "bg-gray-500/20 text-gray-500 dark:text-gray-400 border border-gray-500/30 opacity-70" :
-                                event.is_event 
-                                  ? "bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/20" 
-                                  : "bg-primary/20 text-primary-foreground border border-primary/20"
-                              )}
-                              title={event.title}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setViewMode('list');
-                                setExpandedEventId(event.id);
-                                setTimeout(() => {
-                                  const el = document.getElementById(`event-${event.id}`);
-                                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                }, 100);
-                              }}
-                            >
-                              {event.start_time.slice(0,5)} {event.title}
-                            </div>
-                          ))}
+                          {dayEvents.map(event => {
+                            const thisEventRsvps = allRsvps.filter(r => r.event_id === event.id);
+                            const memberOverviews = members.filter(m => m.status === 'active').map(m => ({
+                              ...m,
+                              rsvp: thisEventRsvps.find(r => r.user_id === m.user_id)?.status || 'unknown'
+                            }));
+                            const subscribedTrainers = memberOverviews.filter(m => (m.role === 'trainer' || m.role === 'admin') && m.rsvp === 'yes');
+
+                            return (
+                              <div 
+                                key={event.id}
+                                className={cn(
+                                  "text-[10px] sm:text-xs p-1 rounded font-medium cursor-pointer transition-transform hover:scale-[1.02] flex flex-col",
+                                  event.is_cancelled ? "bg-red-500/10 text-red-500 border border-red-500/20 line-through opacity-70" :
+                                  event.is_active === false ? "bg-gray-500/20 text-gray-500 dark:text-gray-400 border border-gray-500/30 opacity-70" :
+                                  event.is_event 
+                                    ? "bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/20" 
+                                    : "bg-primary/20 text-primary-foreground border border-primary/20"
+                                )}
+                                title={event.title}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExpandedEventId(event.id);
+                                }}
+                              >
+                                <span className="truncate">{event.start_time.slice(0,5)} {event.title}</span>
+                                {subscribedTrainers.length > 0 && (
+                                  <div className="flex flex-wrap gap-0.5 mt-0.5">
+                                    {subscribedTrainers.map(t => (
+                                      <span key={t.id} className="text-[8px] sm:text-[9px] bg-background/30 dark:bg-black/30 border border-white/10 px-1 rounded-sm text-foreground/90 truncate max-w-[80px]">
+                                        {t.profiles?.first_name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     );
                   })}
                 </div>
-              </Card>
+                </Card>
+              </div>
             </div>
           ) : (
             <div className="space-y-4">
@@ -844,209 +875,122 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
                     key={event.id} 
                     id={`event-${event.id}`}
                     className={cn(
-                      "border-white/10 bg-card/60 backdrop-blur-xl transition-all shadow-sm", 
-                      (event.is_cancelled || event.is_active === false) && "opacity-60",
-                      isExpanded && "border-primary/30 shadow-md",
-                      event.is_active === false && "border-dashed"
+                      "group relative overflow-hidden transition-all duration-300 hover:shadow-md mb-4", 
+                      event.is_cancelled || event.is_active === false 
+                        ? "opacity-60 bg-muted/30 border-white/5" 
+                        : "bg-gradient-to-br from-card to-card/50 border-black/5 dark:border-white/10 hover:border-primary/20",
+                      event.is_active === false && "border-dashed border-white/20"
                     )}
                   >
-                    {/* Clickable Header Area */}
-                    <div 
-                      className="p-5 flex justify-between items-start gap-4 cursor-pointer hover:bg-white/[0.02]"
-                      onClick={() => setExpandedEventId(isExpanded ? null : event.id)}
-                    >
-                      <div className="flex-1">
-                        <div className="flex flex-wrap items-center gap-2 mb-3">
-                          <span className="text-xs font-semibold bg-black/10 dark:bg-white/10 px-2.5 py-1 rounded-md border border-white/5">
-                            {format(new Date(event.date), 'EEEE, d. MMM yyyy', { locale: de })}
-                          </span>
-                          <span className="text-xs font-semibold bg-black/10 dark:bg-white/10 px-2.5 py-1 rounded-md flex items-center gap-1 border border-white/5">
-                            <Clock className="w-3.5 h-3.5" /> {event.start_time.slice(0,5)} - {event.end_time.slice(0,5)}
-                          </span>
-                          {event.is_event && !event.is_cancelled && (
-                            <span className="text-xs font-semibold bg-purple-500/20 text-purple-700 dark:text-purple-300 px-2.5 py-1 rounded-md border border-purple-500/20">
-                              Event/Auftritt
-                            </span>
-                          )}
-                          {event.is_cancelled && (
-                            <span className="text-xs font-semibold bg-red-500/20 text-red-500 px-2.5 py-1 rounded-md border border-red-500/30">
-                              Abgesagt
-                            </span>
-                          )}
-                          {event.is_active === false && !event.is_cancelled && (
-                            <span className="text-xs font-semibold bg-gray-500/20 text-gray-500 dark:text-gray-400 px-2.5 py-1 rounded-md border border-gray-500/30">
-                              Inaktiv (Versteckt)
-                            </span>
-                          )}
-                        </div>
-                        <h3 className={cn("text-lg font-display font-bold mb-1.5", event.is_cancelled && "line-through text-muted-foreground")}>{event.title}</h3>
-                        {!event.is_cancelled && event.topic && (
-                          <div className="text-xs text-primary/90 mt-2 flex items-start gap-1.5 p-2 bg-primary/10 rounded-md border border-primary/20">
-                            <FileText className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                            <span><strong>Thema:</strong> {event.topic}</span>
-                          </div>
-                        )}
-                        {!event.is_cancelled && event.description && <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{event.description}</p>}
-                        
-                        {/* Rsvp Overview Badges */}
-                        {!event.is_cancelled && (
-                          <div className="flex flex-wrap items-center gap-2 mt-3">
-                            {subscribedTrainers.length > 0 && (
-                              <div className="flex items-center gap-1.5 text-xs font-semibold bg-primary/10 text-primary border border-primary/20 px-2 py-1 rounded-md" title="Trainingsleitung">
-                                <UserCheck className="w-3.5 h-3.5" />
-                                {subscribedTrainers.map(t => t.profiles?.first_name || 'Unbekannt').join(', ')}
-                              </div>
-                            )}
-                            <div className="flex items-center gap-2 text-xs font-medium border border-white/10 bg-white/5 rounded-md px-2 py-1" title="Zusagen / Vielleicht / Absagen">
-                              <Users className="w-3.5 h-3.5 text-muted-foreground mr-1" />
-                              {counts.yes > 0 ? <span className="text-green-500 dark:text-green-400 font-bold">{counts.yes}</span> : <span className="text-muted-foreground">0</span>}
-                               <span className="text-muted-foreground">/</span>
-                              {counts.maybe > 0 ? <span className="text-yellow-500 dark:text-yellow-400 font-bold">{counts.maybe}</span> : <span className="text-muted-foreground">0</span>}
-                               <span className="text-muted-foreground">/</span>
-                              {counts.no > 0 ? <span className="text-red-500 dark:text-red-400 font-bold">{counts.no}</span> : <span className="text-muted-foreground">0</span>}
-                            </div>
-                          </div>
-                        )}
+                    {/* Subtle highlight line on top for active events */}
+                    {!event.is_cancelled && event.is_active !== false && (
+                       <div className={cn(
+                           "absolute top-0 left-0 right-0 h-[2px] opacity-70 group-hover:opacity-100 transition-opacity", 
+                           event.is_event ? "bg-gradient-to-r from-purple-500 to-indigo-500" : "bg-gradient-to-r from-primary/60 to-primary/20"
+                        )} 
+                       />
+                    )}
 
-                        {/* Compact RSVP display when not expanded */}
-                        {!isExpanded && !event.is_cancelled && myRsvp && (
-                           <div className="inline-flex mt-3 text-[10px] sm:text-xs font-medium px-2 py-1 rounded border border-white/10 bg-white/5">
-                             {myRsvp === 'yes' && <span className="text-green-500 dark:text-green-400">Zusage</span>}
-                             {myRsvp === 'maybe' && <span className="text-yellow-500 dark:text-yellow-400">Vielleicht</span>}
-                             {myRsvp === 'no' && <span className="text-red-500 dark:text-red-400">Absage</span>}
-                           </div>
-                        )}
-                        {event.is_cancelled && (
-                           <div className="mt-3 text-left text-xs font-semibold text-red-500/80">Termin fällt aus.</div>
-                        )}
+                    <div 
+                      className="relative z-10 flex flex-col sm:flex-row p-4 sm:p-5 gap-4 sm:gap-6 cursor-pointer"
+                      onClick={() => setExpandedEventId(event.id)}
+                    >
+                      {/* Left: Date block */}
+                      <div className="flex shrink-0 flex-row sm:flex-col items-center sm:items-start gap-4 sm:gap-1.5 sm:w-24">
+                          <div className="flex flex-col items-center justify-center bg-black/5 dark:bg-white/5 rounded-xl px-4 py-2 sm:px-0 sm:py-3 sm:w-full border border-black/5 dark:border-white/5 shadow-inner">
+                             <span className="text-2xl font-bold leading-none text-foreground">{format(new Date(event.date), 'dd')}</span>
+                             <span className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground mt-1">{format(new Date(event.date), 'MMM', { locale: de })}</span>
+                          </div>
+                          
+                          <div className="flex flex-col sm:w-full items-start gap-1">
+                             <div className="hidden sm:flex text-[11px] font-medium text-muted-foreground w-full justify-center">
+                               {format(new Date(event.date), 'EEEE', { locale: de })}
+                             </div>
+                             <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground/80 sm:block sm:text-center sm:w-full sm:bg-black/5 dark:sm:bg-white/5 sm:rounded-md sm:py-1">
+                                <span className="sm:hidden"><Clock className="w-3.5 h-3.5 inline-block mr-1 opacity-70" /></span>
+                                {event.start_time.slice(0,5)}
+                                <span className="hidden sm:inline mx-0.5">-</span>
+                                <span className="sm:hidden mx-0.5">-</span>
+                                {event.end_time.slice(0,5)}
+                             </div>
+                          </div>
                       </div>
 
-                      <div className="flex items-center justify-center shrink-0 w-8 h-8 rounded-full hover:bg-white/10 transition-colors">
-                         <ChevronDown className={cn("w-5 h-5 text-muted-foreground transition-transform duration-200", isExpanded && "rotate-180")} />
+                      {/* Middle: Main content */}
+                      <div className="flex-1 flex flex-col justify-center min-w-0 pr-6 sm:pr-0">
+                          <div className="flex items-center gap-2 mb-1.5">
+                             <h3 className={cn("text-lg font-display font-semibold tracking-tight truncate", event.is_cancelled && "line-through text-muted-foreground")}>{event.title}</h3>
+                             
+                             {/* Status tags inline next to title */}
+                             {event.is_event && !event.is_cancelled && (
+                                <span className="shrink-0 text-[9px] font-bold tracking-wider uppercase bg-purple-500/10 text-purple-600 dark:text-purple-300 px-2 py-0.5 rounded-full border border-purple-500/20">
+                                  Event
+                                </span>
+                             )}
+                             {event.is_cancelled && (
+                                <span className="shrink-0 text-[9px] font-bold tracking-wider uppercase bg-red-500/10 text-red-600 dark:text-red-400 px-2 py-0.5 rounded-full border border-red-500/20">
+                                  Abgesagt
+                                </span>
+                             )}
+                             {event.is_active === false && !event.is_cancelled && (
+                                <span className="shrink-0 text-[9px] font-bold tracking-wider uppercase bg-gray-500/10 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded-full border border-gray-500/20">
+                                  Versteckt
+                                </span>
+                             )}
+                          </div>
+                          
+                          {!event.is_cancelled && event.topic && (
+                             <p className="text-sm text-foreground/80 leading-relaxed mb-3 flex items-start gap-2 mt-0.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-primary/60 shrink-0 mt-1.5" />
+                                <span className="line-clamp-2">{event.topic}</span>
+                             </p>
+                          )}
+
+                          {/* Rsvp stats */}
+                          {!event.is_cancelled && (
+                             <div className="flex items-center gap-4 mt-auto pt-2">
+                               {subscribedTrainers.length > 0 && (
+                                 <div className="flex items-center gap-2 text-xs text-muted-foreground pb-0.5" title="Trainingsleitung">
+                                   <div className="flex -space-x-1.5">
+                                      {subscribedTrainers.map((t, i) => (
+                                         <div key={t.id} className="w-5 h-5 rounded-full bg-primary/20 border-2 border-card flex items-center justify-center text-[9px] font-bold text-primary shadow-sm" style={{ zIndex: 10 - i}}>
+                                            {t.profiles?.first_name?.charAt(0) || '?'}
+                                         </div>
+                                      ))}
+                                   </div>
+                                   <span className="hidden lg:inline">Geleitet von {subscribedTrainers.map(t => t.profiles?.first_name).join(', ')}</span>
+                                 </div>
+                               )}
+
+                               {subscribedTrainers.length > 0 && <span className="w-[1px] h-3 bg-black/10 dark:bg-white/10" />}
+
+                               <div className="flex items-center space-x-1.5 text-xs text-muted-foreground" title="Zusagen / Vielleicht / Absagen">
+                                  <Users className="w-3.5 h-3.5 opacity-60" />
+                                  <div className="flex space-x-1.5 font-medium">
+                                      <span className={counts.yes > 0 ? "text-green-600 dark:text-green-400 font-semibold" : "opacity-40"}>{counts.yes}</span>
+                                      <span className="opacity-30">/</span>
+                                      <span className={counts.maybe > 0 ? "text-yellow-600 dark:text-yellow-400 font-semibold" : "opacity-40"}>{counts.maybe}</span>
+                                      <span className="opacity-30">/</span>
+                                      <span className={counts.no > 0 ? "text-red-600 dark:text-red-400 font-semibold" : "opacity-40"}>{counts.no}</span>
+                                  </div>
+                               </div>
+
+                                {myRsvp && (
+                                    <div className="ml-auto shrink-0 inline-flex items-center bg-black/5 dark:bg-white/5 rounded-full pl-1.5 pr-2.5 py-0.5 border border-black/5 dark:border-white/5">
+                                        {myRsvp === 'yes' && <><div className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5" /><span className="text-[10px] font-semibold text-foreground/80">Zusage</span></>}
+                                        {myRsvp === 'maybe' && <><div className="w-1.5 h-1.5 rounded-full bg-yellow-500 mr-1.5" /><span className="text-[10px] font-semibold text-foreground/80">Vielleicht</span></>}
+                                        {myRsvp === 'no' && <><div className="w-1.5 h-1.5 rounded-full bg-red-500 mr-1.5" /><span className="text-[10px] font-semibold text-foreground/80">Absage</span></>}
+                                    </div>
+                                )}
+                             </div>
+                          )}
+                      </div>
+
+                      {/* Right: Chevron for indicating interaction */}
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 sm:static sm:translate-y-0 flex items-center justify-center shrink-0 sm:ml-2 text-muted-foreground opacity-40 group-hover:opacity-100 group-hover:text-primary group-hover:translate-x-1 transition-all duration-300">
+                          <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6" />
                       </div>
                     </div>
-
-                    {/* Expanded Section */}
-                    {isExpanded && (
-                      <div className="px-5 pb-5">
-                        {!event.is_cancelled && (
-                          <div 
-                            className="pt-4 border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-                          >
-                            <div className="flex flex-col gap-2 w-full sm:w-auto">
-                              <p className="text-xs font-medium text-muted-foreground">Deine Teilnahme:</p>
-                              <div className="flex flex-row flex-wrap gap-2">
-                                 <Button 
-                                   variant={myRsvp === 'yes' ? 'default' : 'outline'} 
-                                   size="sm" 
-                                   onClick={() => handleRSVP(event, 'yes')}
-                                   className={cn("h-8 text-xs flex-1 sm:flex-none", myRsvp === 'yes' ? 'bg-green-500 hover:bg-green-600 text-white border-green-500 shadow-md shadow-green-500/20' : 'border-white/20 hover:bg-green-500/20 hover:border-green-500 hover:text-green-500 dark:hover:text-green-400')}
-                                 >
-                                   Zusage
-                                 </Button>
-                                 <Button 
-                                   variant={myRsvp === 'maybe' ? 'default' : 'outline'} 
-                                   size="sm"
-                                   onClick={() => handleRSVP(event, 'maybe')}
-                                   className={cn("h-8 text-xs flex-1 sm:flex-none", myRsvp === 'maybe' ? 'bg-yellow-500 hover:bg-yellow-600 text-white border-yellow-500 shadow-md shadow-yellow-500/20' : 'border-white/20 hover:bg-yellow-500/20 hover:border-yellow-500 hover:text-yellow-600 dark:hover:text-yellow-400')}
-                                 >
-                                   Vielleicht
-                                 </Button>
-                                 <Button 
-                                   variant={myRsvp === 'no' ? 'default' : 'outline'} 
-                                   size="sm"
-                                   onClick={() => handleRSVP(event, 'no')}
-                                   className={cn("h-8 text-xs flex-1 sm:flex-none", myRsvp === 'no' ? 'bg-red-500 hover:bg-red-600 text-white border-red-500 shadow-md shadow-red-500/20' : 'border-white/20 hover:bg-red-500/20 hover:border-red-500 hover:text-red-500 dark:hover:text-red-400')}
-                                 >
-                                   Absage
-                                 </Button>
-                              </div>
-                            </div>
-                            
-                            {isTrainer && (
-                              <div className="flex flex-col sm:flex-row gap-2 sm:items-end w-full sm:w-auto mt-2 sm:mt-0">
-                                <p className="text-xs font-medium text-muted-foreground hidden sm:block">&nbsp;</p>
-                                <Button variant="secondary" size="sm" onClick={(e) => handleEditClick(event, e)} className="h-8 text-xs w-full sm:w-auto">
-                                  Bearbeiten
-                                </Button>
-                                <Button variant="ghost" size="sm" onClick={() => handleCancelEvent(event)} className="h-8 text-xs text-red-500 hover:bg-red-500/10 w-full sm:w-auto">
-                                  Training Absagen
-                                </Button>
-                                <Button variant="ghost" size="sm" onClick={() => setEventToDelete(event)} className="h-8 text-xs text-red-500 hover:bg-red-500/10 hover:text-red-600 w-full sm:w-auto">
-                                  Löschen
-                                </Button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {event.is_cancelled && isTrainer && (
-                          <div className="pt-4 mt-2 border-t border-white/5">
-                             <Button variant="outline" size="sm" onClick={() => handleReactivateEvent(event)} className="h-8 text-xs text-green-500 hover:bg-green-500/10 border-green-500/20 w-full sm:w-auto flex items-center gap-2">
-                               <RotateCcw className="w-3.5 h-3.5" /> Termin reaktivieren
-                             </Button>
-                          </div>
-                        )}
-
-                        {/* Trainer RSVP Overview for Virtual and Real Events */}
-                        {isTrainer && !event.is_cancelled && (
-                          <div className="pt-4 mt-4 border-t border-white/5">
-                            <p className="text-xs font-semibold mb-3">Teilnahme Übersicht:</p>
-                            {(() => {
-                              const thisEventRsvps = allRsvps.filter(r => r.event_id === event.id);
-                              
-                              // Map members with their RSVP status
-                              const memberOverviews = members.filter(m => m.status === 'active').map(m => {
-                                const rsvp = thisEventRsvps.find(r => r.user_id === m.user_id)?.status;
-                                return {
-                                  ...m,
-                                  rsvp: rsvp || 'unknown'
-                                };
-                              });
-
-                              const trainers = memberOverviews.filter(m => m.role === 'trainer' || m.role === 'admin');
-                              const regulars = memberOverviews.filter(m => m.role === 'member');
-
-                              const RsvpBadge = ({ status }: { status: string }) => {
-                                if (status === 'yes') return <span className="text-[10px] bg-green-500/20 text-green-600 dark:text-green-400 px-1.5 py-0.5 rounded border border-green-500/20">Zusage</span>;
-                                if (status === 'maybe') return <span className="text-[10px] bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 px-1.5 py-0.5 rounded border border-yellow-500/20">Vielleicht</span>;
-                                if (status === 'no') return <span className="text-[10px] bg-red-500/20 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded border border-red-500/20">Absage</span>;
-                                return <span className="text-[10px] bg-white/5 text-muted-foreground px-1.5 py-0.5 rounded border border-white/10">Keine Info</span>;
-                              };
-
-                              const renderList = (title: string, list: any[]) => {
-                                if (list.length === 0) return null;
-                                return (
-                                  <div className="mb-4 last:mb-0">
-                                    <h4 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 flex items-center justify-between">
-                                      {title}
-                                      <span className="bg-black/20 dark:bg-white/10 px-1.5 py-0.5 rounded-full">
-                                        {list.filter(m => m.rsvp === 'yes').length} / {list.length}
-                                      </span>
-                                    </h4>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                                      {list.map(m => (
-                                        <div key={m.id} className="flex items-center justify-between bg-black/5 dark:bg-white/5 p-2 rounded border border-white/5 text-sm">
-                                          <span className="truncate pr-2">{m.profiles?.first_name || 'Unbekannt'} {m.profiles?.last_name || ''}</span>
-                                          <RsvpBadge status={m.rsvp} />
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                );
-                              }
-
-                              return (
-                                <div className="space-y-4">
-                                  {renderList("Trainer", trainers)}
-                                  {renderList("Mitglieder", regulars)}
-                                </div>
-                              );
-                            })()}
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </Card>
                 );
               })}
@@ -1057,15 +1001,34 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
         {/* Right Column: Trainer Dashboard / Member Info */}
         {isTrainer && (
           <div className="space-y-6">
-            <h2 className="text-xl font-bold flex items-center gap-2">
-              <Users className="w-5 h-5 text-primary" />
-              Mitglieder ({members.filter(m => m.status === 'active').length})
-            </h2>
+            <div className="flex flex-col gap-4">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <Users className="w-5 h-5 text-primary" />
+                Gruppen Mitglieder
+              </h2>
+              <div className="flex bg-black/10 dark:bg-white/5 p-1 rounded-lg">
+                <button 
+                  className={cn("flex-1 text-sm py-1.5 font-medium rounded-md transition-all", memberTab === 'trainer' ? "bg-white dark:bg-zinc-900 shadow text-foreground" : "text-muted-foreground hover:text-foreground")}
+                  onClick={() => setMemberTab('trainer')}
+                >
+                  Trainer ({members.filter(m => m.status === 'active' && m.role === 'trainer').length})
+                </button>
+                <button 
+                  className={cn("flex-1 text-sm py-1.5 font-medium rounded-md transition-all", memberTab === 'member' ? "bg-white dark:bg-zinc-900 shadow text-foreground" : "text-muted-foreground hover:text-foreground")}
+                  onClick={() => setMemberTab('member')}
+                >
+                  Mitglieder ({members.filter(m => m.status === 'active' && m.role === 'member').length})
+                </button>
+              </div>
+            </div>
             
             <Card className="border-white/10 bg-card/60 backdrop-blur-xl shadow-xl">
               <CardContent className="p-0">
                 <div className="divide-y divide-white/5 max-h-[500px] overflow-y-auto">
-                  {members.sort((a,b) => a.status === 'waiting' ? -1 : 1).map(member => (
+                  {members
+                    .filter(m => m.role === memberTab || (memberTab === 'member' && m.status === 'waiting'))
+                    .sort((a,b) => a.status === 'waiting' ? -1 : 1)
+                    .map(member => (
                     <div key={member.id} className={`p-4 flex items-center justify-between transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${member.status === 'waiting' ? 'bg-yellow-500/5' : ''}`}>
                       <div>
                         <p className="font-semibold text-sm">{member.profiles?.first_name || 'Unbekannt'} {member.profiles?.last_name || ''}</p>
@@ -1105,8 +1068,8 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
       </div>
 
       {eventToDelete && (
-        <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
-          <div className="bg-card border border-white/10 rounded-xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-[120] bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-zinc-950 border border-black/10 dark:border-white/10 rounded-xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
             <h3 className="text-lg font-bold mb-2 text-red-500">Training endgültig löschen?</h3>
             <p className="text-sm text-muted-foreground mb-6">
               Bist du dir 100% sicher, dass an diesem Tag kein Training stattfinden wird? Diese Aktion entfernt den Termin komplett aus der Übersicht.
@@ -1118,6 +1081,196 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
           </div>
         </div>
       )}
+
+      {/* Global Event Modal */}
+      {expandedEventId && (() => {
+        const event = combinedEvents.find(e => e.id === expandedEventId);
+        if (!event) return null;
+        
+        const myRsvp = rsvps.find(r => r.event_id === event.id)?.status;
+        
+        const thisEventRsvps = allRsvps.filter(r => r.event_id === event.id);
+        const memberOverviews = members.filter(m => m.status === 'active').map(m => ({
+          ...m,
+          rsvp: thisEventRsvps.find(r => r.user_id === m.user_id)?.status || 'unknown'
+        }));
+        const subscribedTrainers = memberOverviews.filter(m => (m.role === 'trainer' || m.role === 'admin') && m.rsvp === 'yes');
+
+        return (
+          <>
+            <div 
+              className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+              onClick={() => setExpandedEventId(null)}
+            />
+            <div 
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[110] bg-white dark:bg-zinc-950 w-[92vw] max-w-lg flex flex-col rounded-2xl border border-black/10 dark:border-white/10 p-5 sm:p-6 max-h-[85vh] overflow-y-auto shadow-2xl animate-in zoom-in-95 duration-200"
+            >
+              <div className="flex items-start justify-between mb-5 pb-5 border-b border-black/5 dark:border-white/5">
+                <div className="pr-4">
+                    <h3 className="font-display font-bold text-xl mb-1.5 leading-tight">{event.title}</h3>
+                    <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-muted-foreground mt-2">
+                      <span className="text-primary/90 bg-primary/10 px-2 py-0.5 rounded text-xs">{format(new Date(event.date), 'EEEE, dd.MM.', { locale: de })}</span>
+                      <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5"/> {event.start_time.slice(0,5)} - {event.end_time.slice(0,5)}</span>
+                    </div>
+                </div>
+                <Button variant="ghost" size="icon" onClick={() => setExpandedEventId(null)} className="rounded-full bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 shrink-0">
+                    <X className="w-5 h-5"/>
+                </Button>
+              </div>
+
+              {(event.topic || event.description) && (
+                <div className="mb-5 space-y-3">
+                  {event.topic && (
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Thema</p>
+                      <p className="text-sm text-foreground">{event.topic}</p>
+                    </div>
+                  )}
+                  {event.description && (
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Beschreibung</p>
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{event.description}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Subscribed Trainers Section */}
+              {subscribedTrainers.length > 0 && (
+                <div className="mb-5 bg-primary/5 border border-primary/10 p-3 rounded-lg">
+                  <p className="text-xs font-semibold text-primary/80 mb-2">Angemeldete Trainer:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {subscribedTrainers.map(t => (
+                      <div key={t.id} className="flex items-center gap-1.5 bg-black/5 dark:bg-black/40 px-2 py-1 rounded-md text-xs border border-black/5 dark:border-white/5">
+                        <UserCheck className="w-3.5 h-3.5 text-primary" />
+                        <span className="text-foreground">{t.profiles?.first_name} {t.profiles?.last_name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {!event.is_cancelled && (
+              <div 
+                className="pt-4 border-t border-black/10 dark:border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+              >
+                <div className="flex flex-col gap-2 w-full sm:w-auto">
+                  <p className="text-xs font-medium text-muted-foreground">Deine Teilnahme:</p>
+                  <div className="flex flex-row flex-wrap gap-2">
+                      <Button 
+                        variant={myRsvp === 'yes' ? 'default' : 'outline'} 
+                        size="sm" 
+                        onClick={() => handleRSVP(event, 'yes')}
+                        className={cn("h-8 text-xs flex-1 sm:flex-none", myRsvp === 'yes' ? 'bg-green-500 hover:bg-green-600 text-white border-green-500 shadow-md shadow-green-500/20' : 'border-black/20 dark:border-white/20 hover:bg-green-500/20 hover:border-green-500 hover:text-green-600 dark:hover:text-green-400')}
+                      >
+                        Zusage
+                      </Button>
+                      <Button 
+                        variant={myRsvp === 'maybe' ? 'default' : 'outline'} 
+                        size="sm"
+                        onClick={() => handleRSVP(event, 'maybe')}
+                        className={cn("h-8 text-xs flex-1 sm:flex-none", myRsvp === 'maybe' ? 'bg-yellow-500 hover:bg-yellow-600 text-white border-yellow-500 shadow-md shadow-yellow-500/20' : 'border-black/20 dark:border-white/20 hover:bg-yellow-500/20 hover:border-yellow-500 hover:text-yellow-600 dark:hover:text-yellow-400')}
+                      >
+                        Vielleicht
+                      </Button>
+                      <Button 
+                        variant={myRsvp === 'no' ? 'default' : 'outline'} 
+                        size="sm"
+                        onClick={() => handleRSVP(event, 'no')}
+                        className={cn("h-8 text-xs flex-1 sm:flex-none", myRsvp === 'no' ? 'bg-red-500 hover:bg-red-600 text-white border-red-500 shadow-md shadow-red-500/20' : 'border-black/20 dark:border-white/20 hover:bg-red-500/10 hover:border-red-500 hover:text-red-500 dark:hover:text-red-400')}
+                      >
+                        Absage
+                      </Button>
+                  </div>
+                </div>
+                
+                {isTrainer && (
+                  <div className="flex flex-col sm:flex-row gap-2 sm:items-end w-full sm:w-auto mt-4 sm:mt-0 pt-4 sm:pt-0 border-t border-black/10 dark:border-white/10 sm:border-0 relative">
+                    <p className="text-xs font-medium text-muted-foreground w-full sm:hidden mb-1">Aktionen:</p>
+                    <p className="text-xs font-medium text-muted-foreground hidden sm:block">&nbsp;</p>
+                    <Button variant="outline" size="sm" onClick={(e) => { setExpandedEventId(null); handleEditClick(event, e); }} className="h-8 text-xs w-full sm:w-auto border-black/20 dark:border-white/20 hover:bg-black/5 dark:hover:bg-white/10 text-foreground">
+                      Bearbeiten
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => handleCancelEvent(event)} className="h-8 text-xs w-full sm:w-auto border-red-500/30 text-red-500 hover:bg-red-500/10 hover:border-red-500/50">
+                      Training Absagen
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => { setExpandedEventId(null); setEventToDelete(event); }} className="h-8 text-xs w-full sm:w-auto border-red-500/30 text-red-500 hover:bg-red-500/10 hover:border-red-500/50">
+                      Löschen
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {event.is_cancelled && isTrainer && (
+              <div className="pt-4 mt-2 border-t border-black/5 dark:border-white/5">
+                  <Button variant="outline" size="sm" onClick={() => handleReactivateEvent(event)} className="h-8 text-xs text-green-500 hover:bg-green-500/10 border-green-500/20 w-full sm:w-auto flex items-center gap-2">
+                    <RotateCcw className="w-3.5 h-3.5" /> Termin reaktivieren
+                  </Button>
+              </div>
+            )}
+
+            {/* Trainer RSVP Overview for Virtual and Real Events */}
+            {isTrainer && !event.is_cancelled && (
+              <div className="pt-4 mt-4 border-t border-black/5 dark:border-white/5">
+                <p className="text-xs font-semibold mb-3">Teilnahme Übersicht:</p>
+                {(() => {
+                  const thisEventRsvps = allRsvps.filter(r => r.event_id === event.id);
+                  
+                  // Map members with their RSVP status
+                  const memberOverviews = members.filter(m => m.status === 'active').map(m => {
+                    const rsvp = thisEventRsvps.find(r => r.user_id === m.user_id)?.status;
+                    return {
+                      ...m,
+                      rsvp: rsvp || 'unknown'
+                    };
+                  });
+
+                  const trainers = memberOverviews.filter(m => m.role === 'trainer' || m.role === 'admin');
+                  const regulars = memberOverviews.filter(m => m.role === 'member');
+
+                  const RsvpBadge = ({ status }: { status: string }) => {
+                    if (status === 'yes') return <span className="text-[10px] bg-green-500/20 text-green-600 dark:text-green-400 px-1.5 py-0.5 rounded border border-green-500/20">Zusage</span>;
+                    if (status === 'maybe') return <span className="text-[10px] bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 px-1.5 py-0.5 rounded border border-yellow-500/20">Vielleicht</span>;
+                    if (status === 'no') return <span className="text-[10px] bg-red-500/20 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded border border-red-500/20">Absage</span>;
+                    return <span className="text-[10px] bg-black/5 dark:bg-white/5 text-muted-foreground px-1.5 py-0.5 rounded border border-black/10 dark:border-white/10">Keine Info</span>;
+                  };
+
+                  const renderList = (title: string, list: any[]) => {
+                    if (list.length === 0) return null;
+                    return (
+                      <div className="mb-4 last:mb-0">
+                        <h4 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 flex items-center justify-between">
+                          {title}
+                          <span className="bg-black/20 dark:bg-white/10 px-1.5 py-0.5 rounded-full">
+                            {list.filter(m => m.rsvp === 'yes').length} / {list.length}
+                          </span>
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                          {list.map(m => (
+                            <div key={m.id} className="flex items-center justify-between bg-black/5 dark:bg-white/5 p-2 rounded border border-black/5 dark:border-white/5 text-sm">
+                              <span className="truncate pr-2">{m.profiles?.first_name || 'Unbekannt'} {m.profiles?.last_name || ''}</span>
+                              <RsvpBadge status={m.rsvp} />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-4">
+                      {renderList("Trainer", trainers)}
+                      {renderList("Mitglieder", regulars)}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+            </div>
+          </>
+        );
+      })()}
     </motion.div>
   );
 };
