@@ -4,12 +4,14 @@ import { useAuth } from "../components/auth-provider";
 import { supabase } from "../lib/supabase";
 import { Navbar } from "../components/layout/Navbar";
 import { Button } from "../components/ui/button";
-import { Calendar as CalendarIcon, Users, Settings, Plus, Home, Menu, X } from "lucide-react";
+import { Calendar as CalendarIcon, Users, Settings, Plus, Home, Menu, X, Clock, MapPin, CheckCircle2, Circle } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { CalendarPage } from "./dashboard/CalendarPage";
 import { GroupPage } from "./dashboard/GroupPage";
 import { AdminPage } from "./dashboard/AdminPage";
 import { cn } from "../lib/utils";
+import { format, eachDayOfInterval } from "date-fns";
+import { de } from "date-fns/locale";
 
 export const Dashboard = () => {
   const { user, profile, isGlobalAdmin } = useAuth();
@@ -212,11 +214,124 @@ export const Dashboard = () => {
 const DashboardHome = ({ activeMemberships, waitingMemberships, profile, user, refreshMemberships }: any) => {
   const [availableGroups, setAvailableGroups] = useState<any[]>([]);
   const { isGlobalAdmin } = useAuth();
+  const [upcomingEvents, setUpcomingEvents] = useState<any[]>([]);
+  const [myRsvps, setMyRsvps] = useState<any[]>([]);
+  const [loadingEvents, setLoadingEvents] = useState(false);
 
   useEffect(() => {
     fetchAvailableGroups();
+    if (activeMemberships.length > 0) {
+      fetchDashboardData();
+    }
   }, [activeMemberships, waitingMemberships]);
   
+  const fetchDashboardData = async () => {
+    setLoadingEvents(true);
+    try {
+      const groupIds = activeMemberships.map((m: any) => m.group_id);
+      
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      const startStr = format(today, 'yyyy-MM-dd');
+      
+      // Let's get events for next 30 days
+      const end = new Date(today);
+      end.setDate(end.getDate() + 30);
+      const endStr = format(end, 'yyyy-MM-dd');
+
+      // 1. Fetch real events
+      const { data: realEvents } = await supabase
+        .from('events')
+        .select('*')
+        .in('group_id', groupIds)
+        .gte('date', startStr)
+        .lte('date', endStr);
+
+      const eventsList = realEvents || [];
+
+      // 2. Generate virtual events
+      const allDays = eachDayOfInterval({ start: today, end: end });
+      
+      const combinedEvents: any[] = [...eventsList];
+
+      for (const membership of activeMemberships) {
+        const group = membership.groups;
+        if (!group) continue;
+        const templates = group.settings?.templates || [];
+        if (templates.length === 0) continue;
+
+        for (const day of allDays) {
+          const dateStr = format(day, 'yyyy-MM-dd');
+          const jsDay = day.getDay();
+          
+          const dailyTemplates = templates
+            .filter((t: any) => Number(t.dayOfWeek) === jsDay)
+            .sort((a: any, b: any) => a.start_time.localeCompare(b.start_time));
+            
+          const realRegularEvents = combinedEvents
+            .filter(e => e.group_id === group.id && e.date === dateStr && !e.is_event)
+            .sort((a, b) => a.start_time.localeCompare(b.start_time));
+
+          dailyTemplates.forEach((t: any, idx: number) => {
+            if (!realRegularEvents[idx]) {
+              combinedEvents.push({
+                id: `virtual-${dateStr}-${t.start_time}-${idx}-${group.id}`,
+                group_id: group.id,
+                title: t.title,
+                date: dateStr,
+                start_time: t.start_time.length === 5 ? t.start_time + ":00" : t.start_time,
+                end_time: t.end_time.length === 5 ? t.end_time + ":00" : t.end_time,
+                is_event: false,
+                is_cancelled: false,
+                is_virtual: true,
+                is_active: true
+              });
+            }
+          });
+        }
+      }
+
+      // Filter out inactive events
+      // For dashboard, we want to only show active ones for standard members
+      // If user is trainer in a group, maybe they see inactive? The request said "hier müssen alle termine angezeigt werden die für den nutzer möglich sind" -> active events.
+      const filteredEvents = combinedEvents.filter(e => {
+         const m = activeMemberships.find((am: any) => am.group_id === e.group_id);
+         const isTrainer = m?.role === 'trainer' || isGlobalAdmin;
+         return isTrainer || e.is_active !== false;
+      });
+
+      // Sort
+      filteredEvents.sort((a, b) => {
+        if (a.date !== b.date) return a.date.localeCompare(b.date);
+        return (a.start_time || '').localeCompare(b.start_time || '');
+      });
+
+      setUpcomingEvents(filteredEvents);
+
+      // 3. Fetch RSVPs
+      if (user) {
+        // We only fetch RSVPs for real events. Virtual events haven't been created yet so no RSVPs.
+        const realEventIds = filteredEvents.filter(e => !e.is_virtual).map(e => e.id);
+        if (realEventIds.length > 0) {
+          const { data: rsvps } = await supabase
+            .from('rsvps')
+            .select('*')
+            .in('event_id', realEventIds)
+            .eq('user_id', user.id);
+          
+          if (rsvps) setMyRsvps(rsvps);
+        } else {
+           setMyRsvps([]);
+        }
+      }
+
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingEvents(false);
+    }
+  };
+
   const fetchAvailableGroups = async () => {
     const skipIds = [...activeMemberships, ...waitingMemberships].map(m => m.group_id);
     const query = supabase.from('groups').select('*');
@@ -237,6 +352,87 @@ const DashboardHome = ({ activeMemberships, waitingMemberships, profile, user, r
     });
     refreshMemberships();
   };
+
+  const renderEventCard = (event: any, isConfirmed: boolean) => {
+    const rsvp = myRsvps.find(r => r.event_id === event.id);
+
+    return (
+      <Link key={event.id} to={`/app/group/${event.group_id}`}>
+        <div className={cn(
+          "p-4 rounded-xl border border-white/5 bg-black/20 hover:bg-black/30 dark:bg-white/[0.02] dark:hover:bg-white/[0.04] transition-colors relative overflow-hidden group",
+          event.is_cancelled && "opacity-60 grayscale"
+        )}>
+           {event.is_event ? (
+               <div className="absolute top-0 right-0 w-2 h-full bg-purple-500/50" />
+           ) : (
+               <div className="absolute top-0 right-0 w-1 h-full bg-primary/30" />
+           )}
+           <div className="flex justify-between items-start mb-2">
+             <div className="flex items-center gap-2">
+               <div className="bg-white/5 p-2 rounded-lg border border-white/10 text-center min-w-[3rem]">
+                 <div className="text-[10px] uppercase font-bold text-muted-foreground leading-none mb-1">
+                   {format(new Date(event.date), 'MMM', { locale: de })}
+                 </div>
+                 <div className="text-lg font-bold leading-none">
+                   {format(new Date(event.date), 'dd')}
+                 </div>
+               </div>
+               <div>
+                 <h4 className={cn("font-semibold text-sm sm:text-base", event.is_cancelled && "line-through")}>
+                   {event.title}
+                 </h4>
+                 <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                   <Clock className="w-3 h-3" />
+                   {event.start_time.slice(0, 5)} - {event.end_time.slice(0, 5)} Uhr
+                 </div>
+               </div>
+             </div>
+             {isConfirmed ? (
+                <div className="bg-green-500/20 text-green-500 p-1.5 rounded-full border border-green-500/30">
+                  <CheckCircle2 className="w-4 h-4" />
+                </div>
+             ) : rsvp?.status === 'maybe' ? (
+                <span className="text-[10px] bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 px-2 py-1 rounded border border-yellow-500/20 whitespace-nowrap">Vielleicht</span>
+             ) : rsvp?.status === 'no' ? (
+                <span className="text-[10px] bg-red-500/20 text-red-600 dark:text-red-400 px-2 py-1 rounded border border-red-500/20 whitespace-nowrap">Absage</span>
+             ) : (
+                <div className="text-muted-foreground/30 p-1.5">
+                  <Circle className="w-4 h-4" />
+                </div>
+             )}
+           </div>
+           
+           {event.topic && !event.is_cancelled && (
+             <div className="mt-3 text-xs bg-primary/10 text-primary/80 px-2 py-1.5 rounded border border-primary/10 inline-block line-clamp-1">
+               <strong>Thema:</strong> {event.topic}
+             </div>
+           )}
+           
+           {event.is_cancelled && (
+             <div className="mt-3 text-xs font-semibold text-red-500/80">Termin fällt aus</div>
+           )}
+        </div>
+      </Link>
+    );
+  };
+
+  const confirmedEvents = upcomingEvents.filter(e => myRsvps.some(r => r.event_id === e.id && r.status === 'yes'));
+  
+  // Group all events (excluding those they already RSVP'd yes to).
+  const openEventsByGroup: Record<string, { group: any, events: any[] }> = {};
+  
+  upcomingEvents.forEach(e => {
+    const isYes = myRsvps.some(r => r.event_id === e.id && r.status === 'yes');
+    if (!isYes) {
+      if (!openEventsByGroup[e.group_id]) {
+        openEventsByGroup[e.group_id] = {
+           group: activeMemberships.find((m: any) => m.group_id === e.group_id)?.groups,
+           events: []
+        };
+      }
+      openEventsByGroup[e.group_id].events.push(e);
+    }
+  });
 
   return (
     <motion.div
@@ -275,18 +471,72 @@ const DashboardHome = ({ activeMemberships, waitingMemberships, profile, user, r
         </div>
       )}
 
-      {activeMemberships.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <div className="p-6 rounded-2xl border border-white/10 bg-card/40 backdrop-blur-sm">
-             <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center mb-4">
-                <CalendarIcon className="w-6 h-6" />
+      {activeMemberships.length > 0 && !loadingEvents && (
+        <div className="space-y-12">
+           {/* Section 1: Confirmed Events */}
+           {confirmedEvents.length > 0 && (
+             <div>
+                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                   <div className="w-8 h-8 rounded-full bg-green-500/20 text-green-500 flex items-center justify-center">
+                     <CheckCircle2 className="w-5 h-5" />
+                   </div>
+                   Meine Zusagen
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {confirmedEvents.map(e => renderEventCard(e, true))}
+                </div>
              </div>
-             <h3 className="text-lg font-bold">Nächstes Training</h3>
-             <p className="text-sm text-muted-foreground mt-1">Überprüfe deinen Kalender für anstehende Termine.</p>
-             <Link to="/app/calendar">
-                <Button variant="outline" className="mt-4 w-full">Zum Kalender</Button>
-             </Link>
-          </div>
+           )}
+
+           {/* Section 2: Open/Pending Events by Group */}
+           <div>
+              <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+                 <div className="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center">
+                   <CalendarIcon className="w-5 h-5" />
+                 </div>
+                 Offene Termine (Nach Gruppe)
+              </h2>
+              
+              {Object.keys(openEventsByGroup).length === 0 ? (
+                 <p className="text-muted-foreground italic">Aktuell gibt es keine weiteren 
+offenen Termine.</p>
+              ) : (
+                 <div className="space-y-8">
+                   {Object.values(openEventsByGroup).map(({ group, events }) => (
+                     <div key={group?.id} className="bg-card/40 border border-white/10 p-5 rounded-2xl">
+                       <div className="flex items-center gap-3 mb-4 border-b border-white/10 pb-3">
+                         <div className="w-10 h-10 rounded-lg bg-black/20 flex items-center justify-center border border-white/5">
+                           <Users className="w-5 h-5 text-muted-foreground" />
+                         </div>
+                         <div>
+                           <h3 className="font-bold text-lg">{group?.name}</h3>
+                           <p className="text-xs text-muted-foreground">Klicke auf einen Termin, um zu-, abzusagen oder Details zu sehen.</p>
+                         </div>
+                       </div>
+                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                         {events.slice(0, 6).map(e => renderEventCard(e, false))}
+                       </div>
+                       {events.length > 6 && (
+                         <div className="mt-4 text-center">
+                           <Link to={`/app/group/${group?.id}`}>
+                             <Button variant="ghost" size="sm" className="text-xs">
+                               + {events.length - 6} weitere Termine in der Gruppe anzeigen
+                             </Button>
+                           </Link>
+                         </div>
+                       )}
+                     </div>
+                   ))}
+                 </div>
+              )}
+           </div>
+        </div>
+      )}
+      
+      {activeMemberships.length > 0 && loadingEvents && (
+        <div className="py-20 flex flex-col items-center justify-center opacity-50">
+          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4" />
+          <p className="text-sm font-medium">Lade Termine...</p>
         </div>
       )}
     </motion.div>

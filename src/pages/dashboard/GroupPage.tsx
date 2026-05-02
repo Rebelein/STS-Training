@@ -29,6 +29,9 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   
+  // Settings
+  const [settingsMonth, setSettingsMonth] = useState(new Date());
+
   // Expanded event for RSVP
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
 
@@ -131,31 +134,39 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
       today.setHours(0,0,0,0);
       
       for (const day of allDays) {
-        // Only generate for present and future if in list mode, but in calendar mode we can show past templates too
+        // Only generate for present and future if in list mode
         if (viewMode === 'list' && day < today) continue;
         
-        // JS day: 0=Sunday, 1=Monday (match our type)
+        const dateStr = format(day, 'yyyy-MM-dd');
         const jsDay = day.getDay();
-        const dailyTemplates = templates.filter(t => t.dayOfWeek === jsDay);
         
-        for (const t of dailyTemplates) {
-          const dateStr = format(day, 'yyyy-MM-dd');
-          // Check if DB already has this event
-          const exists = combined.some(e => e.date === dateStr && e.start_time.startsWith(t.start_time));
-          if (!exists) {
+        // Find templates for this specific day of week
+        const dailyTemplates = templates
+          .filter(t => Number(t.dayOfWeek) === jsDay)
+          .sort((a, b) => a.start_time.localeCompare(b.start_time));
+        
+        // Find existing real training sessions for this day
+        const realRegularEvents = combined
+          .filter(e => e.date === dateStr && !e.is_event)
+          .sort((a, b) => a.start_time.localeCompare(b.start_time));
+        
+        // For each template, check if a real event already exists in that "slot"
+        dailyTemplates.forEach((t, idx) => {
+          // If there is no real event for this template slot yet, add a virtual one
+          if (!realRegularEvents[idx]) {
             combined.push({
-              id: `virtual-${dateStr}-${t.start_time}`,
+              id: `virtual-${dateStr}-${t.start_time}-${idx}`,
               group_id: id,
               title: t.title,
               date: dateStr,
-              start_time: t.start_time + ":00", // Ensure HH:MM:SS
-              end_time: t.end_time + ":00",
+              start_time: t.start_time.length === 5 ? t.start_time + ":00" : t.start_time,
+              end_time: t.end_time.length === 5 ? t.end_time + ":00" : t.end_time,
               is_event: false,
               is_cancelled: false,
               is_virtual: true
             });
           }
-        }
+        });
       }
     }
     
@@ -176,26 +187,100 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
       });
     }
     
+    combined = combined.filter(e => isTrainer || e.is_active !== false);
     return combined;
+  };
+  
+  const getSettingsEvents = () => {
+    let combined = [...events];
+    if (templates.length > 0) {
+      const allDays = eachDayOfInterval({ start: startOfMonth(settingsMonth), end: endOfMonth(settingsMonth) });
+      for (const day of allDays) {
+        const dateStr = format(day, 'yyyy-MM-dd');
+        const jsDay = day.getDay();
+        const dailyTemplates = templates.filter(t => Number(t.dayOfWeek) === jsDay).sort((a, b) => a.start_time.localeCompare(b.start_time));
+        const realRegularEvents = combined.filter(e => e.date === dateStr && !e.is_event).sort((a, b) => a.start_time.localeCompare(b.start_time));
+        dailyTemplates.forEach((t, idx) => {
+          if (!realRegularEvents[idx]) {
+            combined.push({
+              id: `virtual-${dateStr}-${t.start_time}-${idx}`,
+              group_id: id,
+              title: t.title,
+              date: dateStr,
+              start_time: t.start_time.length === 5 ? t.start_time + ":00" : t.start_time,
+              end_time: t.end_time.length === 5 ? t.end_time + ":00" : t.end_time,
+              is_event: false,
+              is_cancelled: false,
+              is_virtual: true
+            });
+          }
+        });
+      }
+    }
+    
+    combined.sort((a, b) => {
+      if (a.date !== b.date) return a.date.localeCompare(b.date);
+      return (a.start_time || '').localeCompare(b.start_time || '');
+    });
+    
+    const startOfM = startOfMonth(settingsMonth);
+    const endOfM = endOfMonth(settingsMonth);
+    return combined.filter(e => {
+       const d = new Date(e.date);
+       return d >= startOfM && d <= endOfM;
+    });
   };
 
   // Helper function to resolve virtual event
   const resolveVirtualEvent = async (eventObj: any) => {
     if (!eventObj.is_virtual) return eventObj;
     
-    // Is virtual, we need to insert it
-    const { data } = await supabase.from('events').insert({
+    let res = await supabase.from('events').insert({
       group_id: id,
       title: eventObj.title,
       date: eventObj.date,
       start_time: eventObj.start_time,
       end_time: eventObj.end_time,
       is_event: false,
-      is_cancelled: false
+      is_cancelled: false,
+      is_active: eventObj.is_active !== undefined ? eventObj.is_active : true
     }).select().single();
     
-    return data;
+    if (res.error && res.error.message.includes('is_active')) {
+       res = await supabase.from('events').insert({
+         group_id: id,
+         title: eventObj.title,
+         date: eventObj.date,
+         start_time: eventObj.start_time,
+         end_time: eventObj.end_time,
+         is_event: false,
+         is_cancelled: false
+       }).select().single();
+    }
+    
+    if (res.error) {
+      console.error(res.error);
+      return null;
+    }
+    
+    return res.data;
   }
+  
+  const handleToggleEventActive = async (eventObj: any) => {
+    try {
+      const realEvent = await resolveVirtualEvent(eventObj);
+      if (!realEvent) return;
+      
+      const newActiveState = realEvent.is_active === false ? true : false;
+      const { error } = await supabase.from('events').update({ is_active: newActiveState }).eq('id', realEvent.id);
+      
+      if (error) throw error;
+      fetchGroupData();
+    } catch(e: any) {
+      console.error(e);
+      alert("Fehler beim Speichern. Evtl. fehlt die 'is_active' Spalte in der Datenbank.\n\nBitte folgendes SQL Skript im Supabase Dashboard ausführen:\n\nALTER TABLE events ADD COLUMN is_active BOOLEAN DEFAULT true;");
+    }
+  };
 
   const handleRSVP = async (eventObj: any, status: 'yes' | 'no' | 'maybe') => {
     if (!user) return;
@@ -235,9 +320,56 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
   const handleSaveSettings = async () => {
     if (!id) return;
     try {
+      // 1. Update the group settings in Supabase
       await supabase.from('groups').update({
         settings: { templates }
       }).eq('id', id);
+
+      // 2. Synchronize future regular events already in the database
+      const today = new Date().toISOString().split('T')[0];
+      const { data: futureEvents } = await supabase
+        .from('events')
+        .select('*')
+        .eq('group_id', id)
+        .eq('is_event', false)
+        .gte('date', today);
+
+      if (futureEvents && futureEvents.length > 0) {
+        // Group by date to match by index per day
+        const eventsByDate: Record<string, any[]> = {};
+        futureEvents.forEach(e => {
+          if (!eventsByDate[e.date]) eventsByDate[e.date] = [];
+          eventsByDate[e.date].push(e);
+        });
+
+        // For each day, align with templates and update
+        for (const dateStr of Object.keys(eventsByDate)) {
+          const jsDay = new Date(dateStr).getDay();
+          const dayTemplates = templates
+            .filter(t => Number(t.dayOfWeek) === jsDay)
+            .sort((a,b) => a.start_time.localeCompare(b.start_time));
+          
+          const dayEvents = eventsByDate[dateStr].sort((a,b) => a.start_time.localeCompare(b.start_time));
+          
+          for (let i = 0; i < Math.min(dayTemplates.length, dayEvents.length); i++) {
+            const t = dayTemplates[i];
+            const e = dayEvents[i];
+            
+            // If template properties differ from event, update event
+            const tStartTime = t.start_time.length === 5 ? t.start_time + ":00" : t.start_time;
+            const tEndTime = t.end_time.length === 5 ? t.end_time + ":00" : t.end_time;
+            
+            if (e.title !== t.title || e.start_time !== tStartTime || e.end_time !== tEndTime) {
+               await supabase.from('events').update({
+                 title: t.title,
+                 start_time: tStartTime,
+                 end_time: tEndTime
+               }).eq('id', e.id);
+            }
+          }
+        }
+      }
+
       setShowSettings(false);
       fetchGroupData();
     } catch(e) {
@@ -420,6 +552,55 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
               </Button>
             </div>
             
+            <div className="pt-6 mt-6 border-t border-white/10 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold">Monatsübersicht & Training-Aktivierung</h3>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Aktiviere oder deaktiviere einzelne Trainings für den Monat. Inaktive Trainings werden regulären Mitgliedern nicht angezeigt.
+                  </p>
+                </div>
+                <div className="flex items-center justify-end gap-2 bg-black/20 dark:bg-white/10 rounded-md p-1 border border-white/5 mx-auto sm:mx-0 min-w-max">
+                  <Button variant="ghost" size="icon" className="w-7 h-7 rounded" onClick={() => setSettingsMonth(new Date(settingsMonth.getFullYear(), settingsMonth.getMonth() - 1, 1))}>
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  <span className="text-xs font-semibold px-2 min-w-[100px] text-center">
+                    {format(settingsMonth, 'MMMM yyyy', { locale: de })}
+                  </span>
+                  <Button variant="ghost" size="icon" className="w-7 h-7 rounded" onClick={() => setSettingsMonth(new Date(settingsMonth.getFullYear(), settingsMonth.getMonth() + 1, 1))}>
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                {getSettingsEvents().map((se) => (
+                  <div key={se.id} className={cn("p-3 rounded-lg border flex items-start justify-between gap-3 text-sm transition-colors", se.is_active === false ? "bg-red-500/10 border-red-500/20 opacity-80" : "bg-black/5 dark:bg-white/5 border-white/5")}>
+                    <div>
+                      <div className="font-semibold flex items-center gap-1.5 flex-wrap">
+                        {format(new Date(se.date), 'dd.MM.', { locale: de })} - {se.start_time.slice(0,5)}
+                        {se.is_event ? (
+                           <span className="text-[10px] bg-purple-500/20 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded ml-1">Event</span>
+                        ) : null}
+                      </div>
+                      <div className="text-xs mt-1 text-muted-foreground truncate max-w-[200px]">{se.title}</div>
+                    </div>
+                    <Button 
+                      size="sm" 
+                      variant={se.is_active === false ? "outline" : "default"}
+                      onClick={() => handleToggleEventActive(se)}
+                      className={cn("h-7 text-xs", se.is_active === false ? "border-red-500/30 text-red-500 hover:bg-red-500/10" : "bg-green-500 hover:bg-green-600 text-white")}
+                    >
+                      {se.is_active === false ? "Inaktiv" : "Aktiv"}
+                    </Button>
+                  </div>
+                ))}
+                {getSettingsEvents().length === 0 && (
+                  <div className="col-span-2 text-center text-xs text-muted-foreground py-6">Keine Termine für diesen Monat gefunden.</div>
+                )}
+              </div>
+            </div>
+            
             <div className="flex justify-end pt-4 border-t border-white/5">
               <Button onClick={handleSaveSettings}>Einstellungen speichern</Button>
             </div>
@@ -579,6 +760,7 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
                               className={cn(
                                 "text-[10px] sm:text-xs p-1 rounded font-medium truncate cursor-pointer transition-transform hover:scale-[1.02]",
                                 event.is_cancelled ? "bg-red-500/10 text-red-500 border border-red-500/20 line-through opacity-70" :
+                                event.is_active === false ? "bg-gray-500/20 text-gray-500 dark:text-gray-400 border border-gray-500/30 opacity-70" :
                                 event.is_event 
                                   ? "bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/20" 
                                   : "bg-primary/20 text-primary-foreground border border-primary/20"
@@ -613,14 +795,27 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
                 const myRsvp = rsvps.find(r => r.event_id === event.id)?.status;
                 const isExpanded = expandedEventId === event.id;
                 
+                const thisEventRsvps = allRsvps.filter(r => r.event_id === event.id);
+                const memberOverviews = members.filter(m => m.status === 'active').map(m => ({
+                  ...m,
+                  rsvp: thisEventRsvps.find(r => r.user_id === m.user_id)?.status || 'unknown'
+                }));
+                const subscribedTrainers = memberOverviews.filter(m => (m.role === 'trainer' || m.role === 'admin') && m.rsvp === 'yes');
+                const counts = {
+                  yes: memberOverviews.filter(m => m.role === 'member' && m.rsvp === 'yes').length,
+                  maybe: memberOverviews.filter(m => m.role === 'member' && m.rsvp === 'maybe').length,
+                  no: memberOverviews.filter(m => m.role === 'member' && m.rsvp === 'no').length,
+                };
+                
                 return (
                   <Card 
                     key={event.id} 
                     id={`event-${event.id}`}
                     className={cn(
                       "border-white/10 bg-card/60 backdrop-blur-xl transition-all shadow-sm cursor-pointer hover:bg-card/80", 
-                      event.is_cancelled && "opacity-60",
-                      isExpanded && "border-primary/30 shadow-md"
+                      (event.is_cancelled || event.is_active === false) && "opacity-60",
+                      isExpanded && "border-primary/30 shadow-md",
+                      event.is_active === false && "border-dashed"
                     )}
                     onClick={() => setExpandedEventId(isExpanded ? null : event.id)}
                   >
@@ -644,6 +839,11 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
                                 Abgesagt
                               </span>
                             )}
+                            {event.is_active === false && !event.is_cancelled && (
+                              <span className="text-xs font-semibold bg-gray-500/20 text-gray-500 dark:text-gray-400 px-2.5 py-1 rounded-md border border-gray-500/30">
+                                Inaktiv (Versteckt)
+                              </span>
+                            )}
                           </div>
                           <h3 className={cn("text-lg font-display font-bold mb-1.5", event.is_cancelled && "line-through text-muted-foreground")}>{event.title}</h3>
                           {!event.is_cancelled && event.topic && (
@@ -653,6 +853,26 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
                             </div>
                           )}
                           {!event.is_cancelled && event.description && <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{event.description}</p>}
+                          
+                          {/* Rsvp Overview Badges */}
+                          {!event.is_cancelled && (
+                            <div className="flex flex-wrap items-center gap-2 mt-3">
+                              {subscribedTrainers.length > 0 && (
+                                <div className="flex items-center gap-1.5 text-xs font-semibold bg-primary/10 text-primary border border-primary/20 px-2 py-1 rounded-md" title="Trainingsleitung">
+                                  <UserCheck className="w-3.5 h-3.5" />
+                                  {subscribedTrainers.map(t => t.profiles?.first_name || 'Unbekannt').join(', ')}
+                                </div>
+                              )}
+                              <div className="flex items-center gap-2 text-xs font-medium border border-white/10 bg-white/5 rounded-md px-2 py-1" title="Zusagen / Vielleicht / Absagen">
+                                <Users className="w-3.5 h-3.5 text-muted-foreground mr-1" />
+                                {counts.yes > 0 ? <span className="text-green-500 dark:text-green-400 font-bold">{counts.yes}</span> : <span className="text-muted-foreground">0</span>}
+                                 <span className="text-muted-foreground">/</span>
+                                {counts.maybe > 0 ? <span className="text-yellow-500 dark:text-yellow-400 font-bold">{counts.maybe}</span> : <span className="text-muted-foreground">0</span>}
+                                 <span className="text-muted-foreground">/</span>
+                                {counts.no > 0 ? <span className="text-red-500 dark:text-red-400 font-bold">{counts.no}</span> : <span className="text-muted-foreground">0</span>}
+                              </div>
+                            </div>
+                          )}
                         </div>
                         
                         {/* Compact RSVP display when not expanded */}

@@ -3,8 +3,9 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../auth-provider";
 import { useTheme } from "../theme-provider";
 import { Button } from "../ui/button";
-import { Music, Menu, Moon, Sun, User as UserIcon, Calendar, LogOut } from "lucide-react";
+import { Music, Menu, Moon, Sun, User as UserIcon, Calendar, LogOut, Shield } from "lucide-react";
 import { supabase } from "../../lib/supabase";
+import { STSLogo } from "../ui/Logo";
 
 export const Navbar = () => {
   const { session, profile, isGlobalAdmin } = useAuth();
@@ -31,8 +32,8 @@ export const Navbar = () => {
     <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-background/50 backdrop-blur-xl">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
         <Link to={session ? "/app" : "/"} className="flex items-center gap-3 group">
-          <div className="h-10 w-10 flex items-center justify-center p-1 bg-white/5 rounded-xl border border-white/10 group-hover:bg-white/10 transition-colors">
-             <img src="/Logo/Standard-Logo.png" alt="STS Wachendorf Logo" className="w-full h-full object-contain drop-shadow-[0_0_8px_rgba(255,255,255,0.2)]" />
+          <div className="h-10 w-10 flex items-center justify-center p-1 bg-white/5 rounded-xl border border-white/10 group-hover:bg-white/10 transition-colors overflow-hidden">
+             <STSLogo className="w-full h-full text-primary drop-shadow-[0_0_8px_rgba(255,255,255,0.2)]" />
           </div>
           <span className="font-display font-semibold text-lg tracking-tight hidden sm:block">STS Wachendorf e.V.</span>
         </Link>
