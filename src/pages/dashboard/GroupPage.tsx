@@ -810,6 +810,7 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
                               rsvp: thisEventRsvps.find(r => r.user_id === m.user_id)?.status || 'unknown'
                             }));
                             const subscribedTrainers = memberOverviews.filter(m => (m.role === 'trainer' || m.role === 'admin') && m.rsvp === 'yes');
+                            const yesCount = memberOverviews.filter(m => m.role === 'member' && m.rsvp === 'yes').length;
 
                             return (
                               <div 
@@ -829,13 +830,18 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
                                 }}
                               >
                                 <span className="truncate">{event.start_time.slice(0,5)} {event.title}</span>
-                                {subscribedTrainers.length > 0 && (
-                                  <div className="flex flex-wrap gap-0.5 mt-0.5">
+                                {(subscribedTrainers.length > 0 || yesCount > 0) && (
+                                  <div className="flex flex-wrap items-center gap-0.5 mt-0.5">
                                     {subscribedTrainers.map(t => (
                                       <span key={t.id} className="text-[8px] sm:text-[9px] bg-background/30 dark:bg-black/30 border border-white/10 px-1 rounded-sm text-foreground/90 truncate max-w-[80px]">
                                         {t.profiles?.first_name}
                                       </span>
                                     ))}
+                                    {yesCount > 0 && (
+                                      <span className="text-[8px] sm:text-[9px] bg-background/30 dark:bg-black/30 border border-white/10 px-1 rounded-sm text-foreground/90 flex items-center gap-0.5">
+                                        <Users className="w-2 h-2" /> {yesCount}
+                                      </span>
+                                    )}
                                   </div>
                                 )}
                               </div>
