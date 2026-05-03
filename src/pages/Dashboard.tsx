@@ -124,7 +124,7 @@ export const Dashboard = () => {
       <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-purple-900/20 rounded-full blur-[120px] pointer-events-none z-0"></div>
       <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-indigo-900/20 rounded-full blur-[120px] pointer-events-none z-0"></div>
 
-      <div className="relative z-10 w-full">
+      <div className="relative z-50 w-full">
         <Navbar />
       </div>
       
@@ -249,6 +249,8 @@ export const Dashboard = () => {
                  <DashboardHome 
                    activeMemberships={activeMemberships} 
                    waitingMemberships={waitingMemberships} 
+                   availableGroups={availableGroups}
+                   handleJoinGroup={handleJoinGroup}
                    profile={profile} 
                    user={user}
                    refreshMemberships={fetchMemberships}
@@ -264,7 +266,7 @@ export const Dashboard = () => {
   );
 };
 
-const DashboardHome = ({ activeMemberships, waitingMemberships, profile, user, refreshMemberships }: any) => {
+const DashboardHome = ({ activeMemberships, waitingMemberships, availableGroups, handleJoinGroup, profile, user, refreshMemberships }: any) => {
   const { isGlobalAdmin } = useAuth();
   const [upcomingEvents, setUpcomingEvents] = useState<any[]>([]);
   const [myRsvps, setMyRsvps] = useState<any[]>([]);
@@ -469,13 +471,49 @@ const DashboardHome = ({ activeMemberships, waitingMemberships, profile, user, r
       <h1 className="text-4xl font-serif italic mb-2">Hallo, {profile?.first_name || 'Mitglied'}!</h1>
       <p className="text-muted-foreground text-lg mb-10">Willkommen im STS Wachendorf e.V. Vereinsportal.</p>
 
-      {activeMemberships.length === 0 && waitingMemberships.length === 0 && (
+      {activeMemberships.length === 0 && (
         <div className="bg-card border border-black/10 dark:border-white/10 rounded-xl p-8 text-center max-w-md mx-auto mt-12 shadow-xl mb-12">
           <div className="w-16 h-16 bg-primary/20 text-primary rounded-full flex items-center justify-center mx-auto mb-4">
             <Users className="w-8 h-8" />
           </div>
-          <h2 className="text-xl font-bold mb-2">Du bist noch in keiner Gruppe</h2>
-          <p className="text-muted-foreground mb-6">Bitte frage bei einer Gruppe im Seitenmenü an (unter "Gruppen beitreten"), um Trainings zu sehen und teilzunehmen.</p>
+          <h2 className="text-xl font-bold mb-2">
+            {waitingMemberships.length > 0 
+              ? "Deine Anfragen werden bearbeitet" 
+              : "Du bist noch in keiner Gruppe"
+            }
+          </h2>
+          <p className="text-muted-foreground mb-6">
+            {waitingMemberships.length > 0 
+              ? `Du hast bereits ${waitingMemberships.length > 1 ? 'Anfragen' : 'eine Anfrage'} gesendet. Sobald ein Trainer dich freischaltet, siehst du hier alle Termine.`
+              : "Bitte stelle eine Anfrage bei einer verfügbaren Gruppe, um Trainings zu sehen und teilzunehmen."
+            }
+          </p>
+          
+          {availableGroups && availableGroups.length > 0 && (
+             <div className="mt-6 text-left border-t border-black/10 dark:border-white/10 pt-6">
+                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 text-center">
+                  Weitere Gruppen
+                </h3>
+                <div className="space-y-2">
+                  {availableGroups.map((g: any) => (
+                    <div key={g.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-lg bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold truncate">{g.name}</p>
+                        {g.description && <p className="text-xs text-muted-foreground truncate">{g.description}</p>}
+                      </div>
+                      <Button 
+                        size="sm" 
+                        variant="default"
+                        onClick={() => handleJoinGroup(g.id)}
+                        className="shrink-0"
+                      >
+                        {isGlobalAdmin ? 'Beitreten' : 'Anfragen'}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+             </div>
+          )}
         </div>
       )}
       

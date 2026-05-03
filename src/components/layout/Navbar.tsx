@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../auth-provider";
 import { useTheme } from "../theme-provider";
 import { Button } from "../ui/button";
-import { Music, Menu, Moon, Sun, User as UserIcon, Calendar, LogOut, Shield } from "lucide-react";
+import { Music, Menu, Moon, Sun, User as UserIcon, Calendar, LogOut, Settings } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { STSLogo } from "../ui/Logo";
 
@@ -56,20 +56,26 @@ export const Navbar = () => {
                   <Calendar className="w-4 h-4" />
                 </Button>
               </Link>
-              <div 
-                className="user-menu-container h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-primary/20 flex items-center justify-center text-primary font-medium border border-primary/20 relative cursor-pointer"
-                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              >
-                {(profile?.first_name?.[0] || session.user.email?.[0] || "?").toUpperCase()}
+              <div className="user-menu-container relative">
+                <div 
+                  className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-primary/20 flex items-center justify-center text-primary font-medium border border-primary/20 cursor-pointer hover:bg-primary/30 transition-colors"
+                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                >
+                  {(profile?.first_name?.[0] || session.user.email?.[0] || "?").toUpperCase()}
+                </div>
                 
                 {isDropdownOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-48 bg-card border border-white/10 shadow-xl rounded-xl p-2 z-50 dark:bg-black/90 dark:backdrop-blur-xl">
-                     <div className="px-2 py-2 text-xs text-muted-foreground border-b border-white/10 mb-2 overflow-hidden truncate">
-                       {profile?.first_name} {profile?.last_name}
+                  <div className="absolute right-0 top-full mt-2 w-48 bg-card border border-black/10 dark:border-white/10 shadow-xl rounded-xl p-2 z-50 dark:bg-black/90 dark:backdrop-blur-xl">
+                     <div className="px-2 py-2 text-xs text-muted-foreground border-b border-black/5 dark:border-white/10 mb-2 overflow-hidden truncate">
+                       {profile?.first_name || 'Benutzer'} {profile?.last_name || ''}
                        <br/>
                        <span className="text-[10px]">{session.user.email}</span>
                      </div>
-                     <button onClick={handleLogout} className="w-full text-left px-2 py-2 text-sm rounded-md hover:bg-red-500/10 hover:text-red-500 flex items-center gap-2 transition-colors">
+                     <Link to="/app" onClick={() => setIsDropdownOpen(false)} className="w-full text-left px-2 py-2 text-sm rounded-md hover:bg-black/5 dark:hover:bg-white/10 flex items-center gap-2 transition-colors">
+                        <Settings className="w-4 h-4" />
+                        Einstellungen
+                     </Link>
+                     <button onClick={(e) => { e.stopPropagation(); handleLogout(); }} className="w-full text-left px-2 py-2 text-sm rounded-md hover:bg-red-500/10 hover:text-red-500 flex items-center gap-2 transition-colors mt-1">
                         <LogOut className="w-4 h-4" />
                         Abmelden
                      </button>
