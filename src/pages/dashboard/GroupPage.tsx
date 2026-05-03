@@ -951,14 +951,14 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
                              <div className="flex items-center gap-4 mt-auto pt-2">
                                {subscribedTrainers.length > 0 && (
                                  <div className="flex items-center gap-2 text-xs text-muted-foreground pb-0.5" title="Trainingsleitung">
-                                   <div className="flex -space-x-1.5">
-                                      {subscribedTrainers.map((t, i) => (
-                                         <div key={t.id} className="w-5 h-5 rounded-full bg-primary/20 border-2 border-card flex items-center justify-center text-[9px] font-bold text-primary shadow-sm" style={{ zIndex: 10 - i}}>
-                                            {t.profiles?.first_name?.charAt(0) || '?'}
+                                   <div className="flex flex-wrap gap-1.5">
+                                      {subscribedTrainers.map((t) => (
+                                         <div key={t.id} className="flex items-center gap-1 bg-primary/10 border border-primary/20 px-1.5 py-0.5 rounded text-[10px] sm:text-[11px] font-medium text-primary shadow-sm">
+                                            <UserCheck className="w-3 h-3" />
+                                            <span className="truncate max-w-[80px] sm:max-w-none">{t.profiles?.first_name}</span>
                                          </div>
                                       ))}
                                    </div>
-                                   <span className="hidden lg:inline">Geleitet von {subscribedTrainers.map(t => t.profiles?.first_name).join(', ')}</span>
                                  </div>
                                )}
 
