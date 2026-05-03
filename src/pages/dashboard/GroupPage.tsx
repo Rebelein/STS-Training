@@ -805,7 +805,7 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
                         <div className="space-y-1">
                           {dayEvents.map(event => {
                             const thisEventRsvps = allRsvps.filter(r => r.event_id === event.id);
-                            const memberOverviews = members.filter(m => m.status === 'active').map(m => ({
+                            const memberOverviews = members.filter(m => m.status === 'active' && !m.is_hidden).map(m => ({
                               ...m,
                               rsvp: thisEventRsvps.find(r => r.user_id === m.user_id)?.status || 'unknown'
                             }));
@@ -859,7 +859,7 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
                 const isExpanded = expandedEventId === event.id;
                 
                 const thisEventRsvps = allRsvps.filter(r => r.event_id === event.id);
-                const memberOverviews = members.filter(m => m.status === 'active').map(m => ({
+                const memberOverviews = members.filter(m => m.status === 'active' && !m.is_hidden).map(m => ({
                   ...m,
                   rsvp: thisEventRsvps.find(r => r.user_id === m.user_id)?.status || 'unknown'
                 }));
@@ -1011,13 +1011,13 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
                   className={cn("flex-1 text-sm py-1.5 font-medium rounded-md transition-all", memberTab === 'trainer' ? "bg-white dark:bg-zinc-900 shadow text-foreground" : "text-muted-foreground hover:text-foreground")}
                   onClick={() => setMemberTab('trainer')}
                 >
-                  Trainer ({members.filter(m => m.status === 'active' && m.role === 'trainer').length})
+                  Trainer ({members.filter(m => m.status === 'active' && m.role === 'trainer' && !m.is_hidden).length})
                 </button>
                 <button 
                   className={cn("flex-1 text-sm py-1.5 font-medium rounded-md transition-all", memberTab === 'member' ? "bg-white dark:bg-zinc-900 shadow text-foreground" : "text-muted-foreground hover:text-foreground")}
                   onClick={() => setMemberTab('member')}
                 >
-                  Mitglieder ({members.filter(m => m.status === 'active' && m.role === 'member').length})
+                  Mitglieder ({members.filter(m => m.status === 'active' && m.role === 'member' && !m.is_hidden).length})
                 </button>
               </div>
             </div>
@@ -1026,7 +1026,7 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
               <CardContent className="p-0">
                 <div className="divide-y divide-white/5 max-h-[500px] overflow-y-auto">
                   {members
-                    .filter(m => m.role === memberTab || (memberTab === 'member' && m.status === 'waiting'))
+                    .filter(m => !m.is_hidden && (m.role === memberTab || (memberTab === 'member' && m.status === 'waiting')))
                     .sort((a,b) => a.status === 'waiting' ? -1 : 1)
                     .map(member => (
                     <div key={member.id} className={`p-4 flex items-center justify-between transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${member.status === 'waiting' ? 'bg-yellow-500/5' : ''}`}>
@@ -1090,7 +1090,7 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
         const myRsvp = rsvps.find(r => r.event_id === event.id)?.status;
         
         const thisEventRsvps = allRsvps.filter(r => r.event_id === event.id);
-        const memberOverviews = members.filter(m => m.status === 'active').map(m => ({
+        const memberOverviews = members.filter(m => m.status === 'active' && !m.is_hidden).map(m => ({
           ...m,
           rsvp: thisEventRsvps.find(r => r.user_id === m.user_id)?.status || 'unknown'
         }));
@@ -1218,7 +1218,7 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
                   const thisEventRsvps = allRsvps.filter(r => r.event_id === event.id);
                   
                   // Map members with their RSVP status
-                  const memberOverviews = members.filter(m => m.status === 'active').map(m => {
+                  const memberOverviews = members.filter(m => m.status === 'active' && !m.is_hidden).map(m => {
                     const rsvp = thisEventRsvps.find(r => r.user_id === m.user_id)?.status;
                     return {
                       ...m,
