@@ -59,6 +59,14 @@ export default function App() {
                 <AuthPage mode="register" />
               </PublicRoute>
             } />
+            <Route path="/forgot-password" element={
+              <PublicRoute>
+                <AuthPage mode="forgot_password" />
+              </PublicRoute>
+            } />
+            <Route path="/update-password" element={
+              <AuthPage mode="update_password" />
+            } />
             
             <Route path="/app/*" element={
               <ProtectedRoute>

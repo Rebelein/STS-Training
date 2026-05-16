@@ -1020,10 +1020,15 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
                   Trainer ({members.filter(m => m.status === 'active' && m.role === 'trainer' && !m.is_hidden).length})
                 </button>
                 <button 
-                  className={cn("flex-1 text-sm py-1.5 font-medium rounded-md transition-all", memberTab === 'member' ? "bg-white dark:bg-zinc-900 shadow text-foreground" : "text-muted-foreground hover:text-foreground")}
+                  className={cn("flex-1 text-sm py-1.5 font-medium rounded-md transition-all relative flex items-center justify-center gap-1", memberTab === 'member' ? "bg-white dark:bg-zinc-900 shadow text-foreground" : "text-muted-foreground hover:text-foreground")}
                   onClick={() => setMemberTab('member')}
                 >
                   Mitglieder ({members.filter(m => m.status === 'active' && m.role === 'member' && !m.is_hidden).length})
+                  {members.filter(m => m.status === 'waiting').length > 0 && (
+                    <span className="bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center">
+                      {members.filter(m => m.status === 'waiting').length}
+                    </span>
+                  )}
                 </button>
               </div>
             </div>

@@ -8,19 +8,21 @@ import { Navbar } from "../components/layout/Navbar";
 import { motion } from "motion/react";
 import { AlertCircle, ArrowLeft } from "lucide-react";
 
-export const AuthPage = ({ mode }: { mode: "login" | "register" }) => {
+export const AuthPage = ({ mode }: { mode: "login" | "register" | "forgot_password" | "update_password" }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setMessage(null);
 
     try {
       if (mode === "register") {
@@ -46,6 +48,18 @@ export const AuthPage = ({ mode }: { mode: "login" | "register" }) => {
           }).eq('id', data.user.id);
         }
         
+        navigate("/app");
+      } else if (mode === "forgot_password") {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/update-password`,
+        });
+        if (error) throw error;
+        setMessage("Ein Link zum Zurücksetzen des Passworts wurde an deine E-Mail gesendet.");
+      } else if (mode === "update_password") {
+        const { error } = await supabase.auth.updateUser({
+          password: password
+        });
+        if (error) throw error;
         navigate("/app");
       } else {
         const { error } = await supabase.auth.signInWithPassword({
@@ -85,12 +99,17 @@ export const AuthPage = ({ mode }: { mode: "login" | "register" }) => {
           <Card className="border-white/10 shadow-2xl backdrop-blur-2xl bg-card/60">
             <CardHeader className="space-y-1">
               <CardTitle className="text-2xl font-display font-bold">
-                {mode === "login" ? "Willkommen zurück" : "Account erstellen"}
+                {mode === "login" ? "Willkommen zurück" : 
+                 mode === "register" ? "Account erstellen" : 
+                 mode === "forgot_password" ? "Passwort vergessen" : 
+                 "Passwort aktualisieren"}
               </CardTitle>
               <CardDescription>
                 {mode === "login" 
                   ? "Melde dich an, um zu deinem Dashboard zu gelangen." 
-                  : "Erstelle einen neuen Account um deinem Verein beizutreten."}
+                  : mode === "register" ? "Erstelle einen neuen Account um deinem Verein beizutreten."
+                  : mode === "forgot_password" ? "Gib deine E-Mail ein und wir senden dir einen Link zum Zurücksetzen."
+                  : "Bitte gib dein neues Passwort ein."}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -99,6 +118,12 @@ export const AuthPage = ({ mode }: { mode: "login" | "register" }) => {
                   <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-start gap-2 text-red-500 text-sm">
                      <AlertCircle className="w-5 h-5 shrink-0" />
                      <span>{error}</span>
+                  </div>
+                )}
+                {message && (
+                  <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg flex items-start gap-2 text-green-500 text-sm">
+                     <AlertCircle className="w-5 h-5 shrink-0" />
+                     <span>{message}</span>
                   </div>
                 )}
                 
@@ -124,43 +149,53 @@ export const AuthPage = ({ mode }: { mode: "login" | "register" }) => {
                     </div>
                   </div>
                 )}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">E-Mail</label>
-                  <Input
-                    required
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="mail@example.com"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium flex justify-between">
-                    <span>Passwort</span>
-                    {mode === "login" && (
-                      <a href="#" className="text-xs text-primary hover:underline">Passwort vergessen?</a>
-                    )}
-                  </label>
-                  <Input
-                    required
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                  />
-                </div>
+                {mode !== "update_password" && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">E-Mail</label>
+                    <Input
+                      required
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="mail@example.com"
+                    />
+                  </div>
+                )}
+                
+                {mode !== "forgot_password" && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium flex justify-between">
+                      <span>Passwort</span>
+                      {mode === "login" && (
+                        <Link to="/forgot-password" className="text-xs text-primary hover:underline">Passwort vergessen?</Link>
+                      )}
+                    </label>
+                    <Input
+                      required
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                    />
+                  </div>
+                )}
 
                 <Button className="w-full mt-2" type="submit" disabled={loading}>
                   {loading 
                     ? "Bitte warten..." 
-                    : mode === "login" ? "Anmelden" : "Registrieren"}
+                    : mode === "login" ? "Anmelden" 
+                    : mode === "register" ? "Registrieren"
+                    : mode === "forgot_password" ? "Link senden"
+                    : "Passwort speichern"}
                 </Button>
                 
                 <div className="text-center text-sm text-muted-foreground mt-4">
                   {mode === "login" ? (
                     <>Noch keinen Account? <Link to="/register" className="text-primary hover:underline">Jetzt registrieren</Link></>
-                  ) : (
+                  ) : mode === "register" ? (
                     <>Bereits registriert? <Link to="/login" className="text-primary hover:underline">Hier anmelden</Link></>
+                  ) : (
+                    <><Link to="/login" className="text-primary hover:underline">Zurück zum Login</Link></>
                   )}
                 </div>
               </form>
