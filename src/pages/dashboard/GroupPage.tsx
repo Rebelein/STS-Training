@@ -32,6 +32,10 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
   // New event state
   const [showEventForm, setShowEventForm] = useState(false);
   const [eventToDelete, setEventToDelete] = useState<any>(null);
+  const [memberToRemove, setMemberToRemove] = useState<any>(null);
+  const [accountToDelete, setAccountToDelete] = useState<any>(null);
+  const [noteNameRequestFor, setNoteNameRequestFor] = useState<any>(null);
+  const [noteNameMessage, setNoteNameMessage] = useState("");
   const [memberTab, setMemberTab] = useState<'trainer' | 'member'>('member');
   const [newEvent, setNewEvent] = useState<{ id?: string, title: string, description: string, topic: string, date: string, start_time: string, end_time: string, is_event: boolean }>({ title: '', description: '', topic: '', date: '', start_time: '', end_time: '', is_event: false });
 
@@ -427,6 +431,38 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
 
   const handleMemberStatus = async (memberId: string, status: string) => {
     await supabase.from('group_members').update({ status }).eq('id', memberId);
+    fetchGroupData();
+  };
+  
+  const handleRemoveMember = async (memberId: string) => {
+    await supabase.from('group_members').delete().eq('id', memberId);
+    fetchGroupData();
+    setMemberToRemove(null);
+  };
+
+  const handleDeleteAccount = async (userId: string) => {
+    try {
+      const { error } = await supabase.rpc('admin_delete_user', { target_user_id: userId });
+      if (error) {
+        alert("Fehler beim Löschen des Accounts: " + error.message);
+      } else {
+        alert("Account erfolgreich gelöscht.");
+        fetchGroupData();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    setAccountToDelete(null);
+  };
+
+  const handleSendNoteNameRequest = async () => {
+    if (!noteNameRequestFor) return;
+    await supabase.from('group_members').update({
+      note_name_requested: true,
+      note_name_request_message: noteNameMessage || null
+    }).eq('id', noteNameRequestFor.id);
+    setNoteNameRequestFor(null);
+    setNoteNameMessage("");
     fetchGroupData();
   };
   
@@ -1040,9 +1076,13 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
                     .filter(m => !m.is_hidden && (m.role === memberTab || (memberTab === 'member' && m.status === 'waiting')))
                     .sort((a,b) => a.status === 'waiting' ? -1 : 1)
                     .map(member => (
-                    <div key={member.id} className={`p-4 flex items-center justify-between transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${member.status === 'waiting' ? 'bg-yellow-500/5' : ''}`}>
+                    <div key={member.id} className={`p-4 flex items-center justify-between transition-colors hover:bg-black/5 dark:hover:bg-white/5 group ${member.status === 'waiting' ? 'bg-yellow-500/5' : ''}`}>
                       <div>
-                        <p className="font-semibold text-sm">{member.profiles?.first_name || 'Unbekannt'} {member.profiles?.last_name || ''}</p>
+                        <p className="font-semibold text-sm">
+                          {member.profiles?.first_name || 'Unbekannt'} {member.profiles?.last_name || ''}
+                          {member.note_name && <span className="ml-2 text-primary text-xs bg-primary/10 px-1.5 py-0.5 rounded font-normal">Notiz: {member.note_name}</span>}
+                          {member.note_name_requested && <span className="ml-2 text-yellow-500 text-xs bg-yellow-500/10 px-1.5 py-0.5 rounded font-normal">Notizname angefragt</span>}
+                        </p>
                         <div className="flex gap-2 text-xs mt-1">
                           <span className={member.status === 'active' ? 'text-green-500' : 'text-yellow-500 font-bold'}>
                             {member.status === 'active' ? 'Aktiv' : 'Wartend'}
@@ -1059,16 +1099,36 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
                         </div>
                       </div>
                       
-                      {member.status === 'waiting' && (
-                         <div className="flex gap-2">
-                           <Button size="icon" variant="outline" className="w-8 h-8 rounded-full text-green-500 border-green-500/30 hover:bg-green-500/20" onClick={() => handleMemberStatus(member.id, 'active')} title="Akzeptieren">
-                             <UserCheck className="w-4 h-4" />
-                           </Button>
-                           <Button size="icon" variant="outline" className="w-8 h-8 rounded-full text-red-500 border-red-500/30 hover:bg-red-500/20" onClick={() => handleMemberStatus(member.id, 'rejected')} title="Ablehnen">
-                             <X className="w-4 h-4" />
-                           </Button>
-                         </div>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {member.status === 'waiting' && (
+                           <div className="flex gap-2">
+                             <Button size="icon" variant="outline" className="w-8 h-8 rounded-full text-green-500 border-green-500/30 hover:bg-green-500/20" onClick={() => handleMemberStatus(member.id, 'active')} title="Akzeptieren">
+                               <UserCheck className="w-4 h-4" />
+                             </Button>
+                             <Button size="icon" variant="outline" className="w-8 h-8 rounded-full text-red-500 border-red-500/30 hover:bg-red-500/20" onClick={() => setMemberToRemove(member.id)} title="Ablehnen">
+                               <X className="w-4 h-4" />
+                             </Button>
+                           </div>
+                        )}
+                        
+                        {member.status === 'active' && (
+                          <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {!member.note_name_requested && (
+                              <Button size="sm" variant="outline" className="h-8 text-xs px-2" onClick={() => setNoteNameRequestFor(member)} title="Notiznamen (z.B. Kind) anfragen">
+                                Notizname anfragen
+                              </Button>
+                            )}
+                            <Button size="sm" variant="outline" className="h-8 text-red-500 border-red-500/30 hover:bg-red-500/20 text-xs px-2" onClick={() => setMemberToRemove(member.id)} title="Aus Gruppe entfernen">
+                              Entfernen
+                            </Button>
+                            {isGlobalAdmin && (
+                              <Button size="sm" variant="outline" className="h-8 text-red-500 border-red-500/30 hover:bg-red-500/20 text-xs px-2" onClick={() => setAccountToDelete(member.user_id)} title="Account komplett löschen">
+                                Account Löschen
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1088,6 +1148,63 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
             <div className="flex gap-3">
               <Button variant="outline" className="flex-1" onClick={() => setEventToDelete(null)}>Abbrechen</Button>
               <Button variant="ghost" className="flex-1 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white" onClick={() => handleDeleteEvent(eventToDelete)}>Ja, löschen</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {memberToRemove && (
+        <div className="fixed inset-0 z-[120] bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-zinc-950 border border-black/10 dark:border-white/10 rounded-xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
+            <h3 className="text-lg font-bold mb-2 text-red-500">Mitglied entfernen?</h3>
+            <p className="text-sm text-muted-foreground mb-6">
+              Möchtest du dieses Mitglied wirklich aus der Gruppe entfernen? Diese Aktion kann rückgängig gemacht werden, indem sich das Mitglied erneut anmeldet.
+            </p>
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => setMemberToRemove(null)}>Abbrechen</Button>
+              <Button variant="ghost" className="flex-1 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white" onClick={() => handleRemoveMember(memberToRemove)}>Ja, entfernen</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {accountToDelete && (
+        <div className="fixed inset-0 z-[120] bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-zinc-950 border border-red-500/50 rounded-xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
+            <h3 className="text-xl font-bold mb-2 text-red-500">ACCOUNT LÖSCHEN</h3>
+            <p className="text-sm text-muted-foreground mb-6 font-semibold">
+              WARNUNG: Möchtest du diesen kompletten Account endgültig löschen?!
+              Dies zerstört das Profil und den Login-Account des Nutzers. Dies kann NICHT rückgängig gemacht werden!
+            </p>
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1 border-white/20" onClick={() => setAccountToDelete(null)}>Abbrechen</Button>
+              <Button variant="destructive" className="flex-1 bg-red-600 hover:bg-red-500" onClick={() => handleDeleteAccount(accountToDelete)}>Irreversibel Löschen</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {noteNameRequestFor && (
+        <div className="fixed inset-0 z-[120] bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-zinc-950 border border-black/10 dark:border-white/10 rounded-xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
+            <h3 className="text-lg font-bold mb-2">Notizname anfordern</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Fordere {noteNameRequestFor.profiles?.first_name} auf, einen Notiznamen (z.B. den Namen des Kindes) anzugeben, um die Zuordnung zu erleichtern.
+            </p>
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground">Eigene Nachricht an den Nutzer (optional)</label>
+                <Input
+                  className="mt-1"
+                  placeholder="Z.B.: Bitte gib den Namen deines Kindes ein..."
+                  value={noteNameMessage}
+                  onChange={(e) => setNoteNameMessage(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => { setNoteNameRequestFor(null); setNoteNameMessage(""); }}>Abbrechen</Button>
+              <Button className="flex-1" onClick={handleSendNoteNameRequest}>Anfrage senden</Button>
             </div>
           </div>
         </div>
@@ -1260,7 +1377,10 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                           {list.map(m => (
                             <div key={m.id} className="flex items-center justify-between bg-black/5 dark:bg-white/5 p-2 rounded border border-black/5 dark:border-white/5 text-sm">
-                              <span className="truncate pr-2">{m.profiles?.first_name || 'Unbekannt'} {m.profiles?.last_name || ''}</span>
+                              <span className="truncate pr-2">
+                                {m.profiles?.first_name || 'Unbekannt'} {m.profiles?.last_name || ''}
+                                {m.note_name && <span className="ml-1 text-[10px] text-primary">({m.note_name})</span>}
+                              </span>
                               <RsvpBadge status={m.rsvp} />
                             </div>
                           ))}

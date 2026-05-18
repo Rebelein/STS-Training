@@ -4,6 +4,7 @@ import { useAuth } from "../components/auth-provider";
 import { supabase } from "../lib/supabase";
 import { Navbar } from "../components/layout/Navbar";
 import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
 import { Calendar as CalendarIcon, Users, Settings, Plus, Home, Menu, X, Clock, MapPin, CheckCircle2, Circle } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { CalendarPage } from "./dashboard/CalendarPage";
@@ -111,6 +112,20 @@ export const Dashboard = () => {
 
   const activeMemberships = memberships.filter(m => m.status === 'active');
   const waitingMemberships = memberships.filter(m => m.status === 'waiting');
+  
+  const pendingNoteNameRequests = memberships.filter(m => m.note_name_requested);
+  const [currentNoteNameInput, setCurrentNoteNameInput] = useState("");
+
+  const handleSaveNoteName = async (membershipId: string) => {
+    if (!currentNoteNameInput.trim()) return;
+    await supabase.from('group_members').update({
+      note_name: currentNoteNameInput.trim(),
+      note_name_requested: false,
+      note_name_request_message: null
+    }).eq('id', membershipId);
+    setCurrentNoteNameInput("");
+    fetchMemberships();
+  };
 
   const navItems = [
     { name: "Übersicht", path: "/app", icon: Home },
@@ -262,6 +277,36 @@ export const Dashboard = () => {
             </Routes>
         </main>
       </div>
+
+      {pendingNoteNameRequests.length > 0 && (
+        <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white dark:bg-zinc-950 border border-black/10 dark:border-white/10 rounded-xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
+            <h3 className="text-lg font-bold mb-2 text-primary">Aktion erforderlich</h3>
+            <p className="text-sm font-semibold mb-2">
+              Ein Trainer hat einen Notiznamen (z.B. den Namen deines Kindes) in einer Gruppe angefordert.
+            </p>
+            {pendingNoteNameRequests[0].note_name_request_message && (
+              <p className="text-sm text-muted-foreground pb-4 border-b border-black/10 dark:border-white/10 mb-4 italic">
+                "{pendingNoteNameRequests[0].note_name_request_message}"
+              </p>
+            )}
+            <div className="space-y-4 pt-1">
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground uppercase">Notizname / Kindesname</label>
+                <Input
+                  className="mt-1"
+                  value={currentNoteNameInput}
+                  onChange={(e) => setCurrentNoteNameInput(e.target.value)}
+                  placeholder="Notizname eingeben..."
+                />
+              </div>
+              <Button className="w-full" onClick={() => handleSaveNoteName(pendingNoteNameRequests[0].id)}>
+                Speichern
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

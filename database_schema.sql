@@ -30,6 +30,9 @@ create table if not exists public.group_members (
   user_id uuid references public.profiles on delete cascade not null,
   role text not null default 'member' check (role in ('member', 'trainer')),
   status text not null default 'waiting' check (status in ('waiting', 'active')),
+  note_name text,
+  note_name_requested boolean default false,
+  note_name_request_message text,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
   unique (group_id, user_id)
 );
@@ -122,3 +125,15 @@ alter publication supabase_realtime add table public.groups;
 alter publication supabase_realtime add table public.group_members;
 alter publication supabase_realtime add table public.events;
 alter publication supabase_realtime add table public.rsvps;
+
+-- 4. Admin RPC functions
+create or replace function public.admin_delete_user(target_user_id uuid)
+returns void as $$
+begin
+  if not exists (select 1 from public.profiles where id = auth.uid() and is_global_admin = true) then
+    raise exception 'Unauthorized';
+  end if;
+  
+  delete from auth.users where id = target_user_id;
+end;
+$$ language plpgsql security definer;
