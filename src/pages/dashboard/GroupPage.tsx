@@ -36,6 +36,8 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
   const [accountToDelete, setAccountToDelete] = useState<any>(null);
   const [noteNameRequestFor, setNoteNameRequestFor] = useState<any>(null);
   const [noteNameMessage, setNoteNameMessage] = useState("");
+  const [noteNameEditFor, setNoteNameEditFor] = useState<any>(null);
+  const [noteNameEditValue, setNoteNameEditValue] = useState("");
   const [memberTab, setMemberTab] = useState<'trainer' | 'member'>('member');
   const [newEvent, setNewEvent] = useState<{ id?: string, title: string, description: string, topic: string, date: string, start_time: string, end_time: string, is_event: boolean }>({ title: '', description: '', topic: '', date: '', start_time: '', end_time: '', is_event: false });
 
@@ -463,6 +465,18 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
     }).eq('id', noteNameRequestFor.id);
     setNoteNameRequestFor(null);
     setNoteNameMessage("");
+    fetchGroupData();
+  };
+
+  const handleSaveManualNoteName = async () => {
+    if (!noteNameEditFor) return;
+    await supabase.from('group_members').update({
+      note_name: noteNameEditValue || null,
+      note_name_requested: false,
+      note_name_request_message: null
+    }).eq('id', noteNameEditFor.id);
+    setNoteNameEditFor(null);
+    setNoteNameEditValue("");
     fetchGroupData();
   };
   
@@ -1113,6 +1127,9 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
                         
                         {member.status === 'active' && (
                           <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button size="sm" variant="outline" className="h-8 text-xs px-2" onClick={() => { setNoteNameEditFor(member); setNoteNameEditValue(member.note_name || ""); }} title="Notiznamen eintragen/bearbeiten">
+                              Notizname bearbeiten
+                            </Button>
                             {!member.note_name_requested && (
                               <Button size="sm" variant="outline" className="h-8 text-xs px-2" onClick={() => setNoteNameRequestFor(member)} title="Notiznamen (z.B. Kind) anfragen">
                                 Notizname anfragen
@@ -1179,6 +1196,32 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
             <div className="flex gap-3">
               <Button variant="outline" className="flex-1 border-white/20" onClick={() => setAccountToDelete(null)}>Abbrechen</Button>
               <Button variant="destructive" className="flex-1 bg-red-600 hover:bg-red-500" onClick={() => handleDeleteAccount(accountToDelete)}>Irreversibel Löschen</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {noteNameEditFor && (
+        <div className="fixed inset-0 z-[120] bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-zinc-950 border border-black/10 dark:border-white/10 rounded-xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
+            <h3 className="text-lg font-bold mb-2">Notizname bearbeiten</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Setze manuell einen Notiznamen für {noteNameEditFor.profiles?.first_name}. Dieser ist nur für Trainer und Admins sichtbar.
+            </p>
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground">Notizname / Kindesname</label>
+                <Input
+                  className="mt-1"
+                  placeholder="Z.B.: Max"
+                  value={noteNameEditValue}
+                  onChange={(e) => setNoteNameEditValue(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => { setNoteNameEditFor(null); setNoteNameEditValue(""); }}>Abbrechen</Button>
+              <Button className="flex-1" onClick={handleSaveManualNoteName}>Speichern</Button>
             </div>
           </div>
         </div>
