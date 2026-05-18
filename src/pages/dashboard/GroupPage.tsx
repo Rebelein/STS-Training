@@ -1090,7 +1090,7 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
                     .filter(m => !m.is_hidden && (m.role === memberTab || (memberTab === 'member' && m.status === 'waiting')))
                     .sort((a,b) => a.status === 'waiting' ? -1 : 1)
                     .map(member => (
-                    <div key={member.id} className={`p-4 flex items-center justify-between transition-colors hover:bg-black/5 dark:hover:bg-white/5 group ${member.status === 'waiting' ? 'bg-yellow-500/5' : ''}`}>
+                    <div key={member.id} className={`p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-colors hover:bg-black/5 dark:hover:bg-white/5 group ${member.status === 'waiting' ? 'bg-yellow-500/5' : ''}`}>
                       <div>
                         <p className="font-semibold text-sm">
                           {member.profiles?.first_name || 'Unbekannt'} {member.profiles?.last_name || ''}
@@ -1113,7 +1113,7 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
                         </div>
                       </div>
                       
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 w-full sm:w-auto">
                         {member.status === 'waiting' && (
                            <div className="flex gap-2">
                              <Button size="icon" variant="outline" className="w-8 h-8 rounded-full text-green-500 border-green-500/30 hover:bg-green-500/20" onClick={() => handleMemberStatus(member.id, 'active')} title="Akzeptieren">
@@ -1126,20 +1126,20 @@ export const GroupPage = ({ userRole }: { userRole: any[] }) => {
                         )}
                         
                         {member.status === 'active' && (
-                          <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Button size="sm" variant="outline" className="h-8 text-xs px-2" onClick={() => { setNoteNameEditFor(member); setNoteNameEditValue(member.note_name || ""); }} title="Notiznamen eintragen/bearbeiten">
+                          <div className="flex gap-2 flex-wrap opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity w-full sm:w-auto">
+                            <Button size="sm" variant="outline" className="h-8 text-xs px-2 flex-1 sm:flex-none" onClick={() => { setNoteNameEditFor(member); setNoteNameEditValue(member.note_name || ""); }} title="Notiznamen eintragen/bearbeiten">
                               Notizname bearbeiten
                             </Button>
                             {!member.note_name_requested && (
-                              <Button size="sm" variant="outline" className="h-8 text-xs px-2" onClick={() => setNoteNameRequestFor(member)} title="Notiznamen (z.B. Kind) anfragen">
+                              <Button size="sm" variant="outline" className="h-8 text-xs px-2 flex-1 sm:flex-none" onClick={() => setNoteNameRequestFor(member)} title="Notiznamen (z.B. Kind) anfragen">
                                 Notizname anfragen
                               </Button>
                             )}
-                            <Button size="sm" variant="outline" className="h-8 text-red-500 border-red-500/30 hover:bg-red-500/20 text-xs px-2" onClick={() => setMemberToRemove(member.id)} title="Aus Gruppe entfernen">
+                            <Button size="sm" variant="outline" className="h-8 text-red-500 border-red-500/30 hover:bg-red-500/20 text-xs px-2 flex-1 sm:flex-none" onClick={() => setMemberToRemove(member.id)} title="Aus Gruppe entfernen">
                               Entfernen
                             </Button>
                             {isGlobalAdmin && (
-                              <Button size="sm" variant="outline" className="h-8 text-red-500 border-red-500/30 hover:bg-red-500/20 text-xs px-2" onClick={() => setAccountToDelete(member.user_id)} title="Account komplett löschen">
+                              <Button size="sm" variant="outline" className="h-8 text-red-500 border-red-500/30 hover:bg-red-500/20 text-xs px-2 flex-1 sm:flex-none" onClick={() => setAccountToDelete(member.user_id)} title="Account komplett löschen">
                                 Account Löschen
                               </Button>
                             )}
